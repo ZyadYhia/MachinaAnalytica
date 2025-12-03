@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+        "laravel-boost": {
+            "command": "/opt/homebrew/Cellar/php/8.5.0/bin/php",
+            "args": [
+                "/Users/ZYAD/Sites/untitled folder/MachinaAnalytica/artisan",
+                "boost:mcp"
+            ]
+        }
+    }
+}
