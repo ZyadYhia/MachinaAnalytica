@@ -1,0 +1,408 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "AnythingLLM Developer API Blueprint",
+        "version": "1.0.0",
+        "description": "AnythingLLM programmatic endpoints for reading, writing, and updating the LLM instance."
+    },
+    "servers": [
+        {
+            "url": "/api",
+            "description": "AnythingLLM Base Path"
+        }
+    ],
+    "tags": [
+        {
+            "name": "Authentication",
+            "description": "Basic authentication checks."
+        },
+        {
+            "name": "Admin",
+            "description": "Administrative tasks, user management, invites, and system preferences."
+        },
+        {
+            "name": "Documents",
+            "description": "Uploading, managing, retrieving, and moving documents."
+        },
+        {
+            "name": "Workspaces",
+            "description": "Creating, retrieving, updating, and interacting with specific workspaces."
+        },
+        {
+            "name": "System Settings",
+            "description": "Viewing and managing system-wide settings and environment variables."
+        },
+        {
+            "name": "Workspace Threads",
+            "description": "Managing the lifecycle and interaction within specific workspace threads."
+        },
+        {
+            "name": "User Management",
+            "description": "General user retrieval."
+        },
+        {
+            "name": "OpenAI Compatible Endpoints",
+            "description": "Endpoints that mirror OpenAI standards."
+        },
+        {
+            "name": "Embed",
+            "description": "Creating, retrieving, updating, and deleting embedded chat instances."
+        }
+    ],
+    "paths": {
+        "/v1/auth": {
+            "get": {
+                "tags": ["Authentication"],
+                "summary": "Check basic authentication status"
+            }
+        },
+        "/v1/admin/is-multi-user-mode": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "Check if multi-user mode is enabled"
+            }
+        },
+        "/v1/admin/users": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "List all users"
+            }
+        },
+        "/v1/admin/users/new": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Create a new user"
+            }
+        },
+        "/v1/admin/users/{id}": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Update user by ID"
+            },
+            "delete": {
+                "tags": ["Admin"],
+                "summary": "Delete user by ID"
+            }
+        },
+        "/v1/admin/invites": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "List all active invites"
+            }
+        },
+        "/v1/admin/invite/new": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Create a new invite"
+            }
+        },
+        "/v1/admin/invite/{id}": {
+            "delete": {
+                "tags": ["Admin"],
+                "summary": "Delete an invite by ID"
+            }
+        },
+        "/v1/admin/workspaces/{workspaceId}/users": {
+            "get": {
+                "tags": ["Admin"],
+                "summary": "List users in a workspace by ID"
+            }
+        },
+        "/v1/admin/workspaces/{workspaceId}/update-users": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Update users in a workspace by ID"
+            }
+        },
+        "/v1/admin/workspaces/{workspaceSlug}/manage-users": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Manage users in a workspace by slug"
+            }
+        },
+        "/v1/admin/workspace-chats": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Perform a workspace chat as an admin"
+            }
+        },
+        "/v1/admin/preferences": {
+            "post": {
+                "tags": ["Admin"],
+                "summary": "Update admin preferences"
+            }
+        },
+        "/v1/document/upload": {
+            "post": {
+                "tags": ["Documents"],
+                "summary": "Upload a document"
+            }
+        },
+        "/v1/document/upload/{folderName}": {
+            "post": {
+                "tags": ["Documents"],
+                "summary": "Upload a document into a specified folder"
+            }
+        },
+        "/v1/document/upload-link": {
+            "post": {
+                "tags": ["Documents"],
+                "summary": "Upload a document from a link"
+            }
+        },
+        "/v1/document/raw-text": {
+            "post": {
+                "tags": ["Documents"],
+                "summary": "Upload raw text as a document"
+            }
+        },
+        "/v1/documents": {
+            "get": {
+                "tags": ["Documents"],
+                "summary": "List all documents"
+            }
+        },
+        "/v1/documents/folder/{folderName}": {
+            "get": {
+                "tags": ["Documents"],
+                "summary": "List documents in a specific folder"
+            }
+        },
+        "/v1/document/accepted-file-types": {
+            "get": {
+                "tags": ["Documents"],
+                "summary": "Get list of accepted file types"
+            }
+        },
+        "/v1/document/metadata-schema": {
+            "get": {
+                "tags": ["Documents"],
+                "summary": "Get document metadata schema"
+            }
+        },
+        "/v1/document/{docName}": {
+            "get": {
+                "tags": ["Documents"],
+                "summary": "Retrieve document metadata by name"
+            }
+        },
+        "/v1/document/create-folder": {
+            "post": {
+                "tags": ["Documents"],
+                "summary": "Create a new document folder"
+            }
+        },
+        "/v1/document/remove-folder": {
+            "delete": {
+                "tags": ["Documents"],
+                "summary": "Remove a document folder"
+            }
+        },
+        "/v1/document/move-files": {
+            "post": {
+                "tags": ["Documents"],
+                "summary": "Move files between folders"
+            }
+        },
+        "/v1/workspace/new": {
+            "post": {
+                "tags": ["Workspaces"],
+                "summary": "Create a new workspace"
+            }
+        },
+        "/v1/workspaces": {
+            "get": {
+                "tags": ["Workspaces"],
+                "summary": "List all workspaces"
+            }
+        },
+        "/v1/workspace/{slug}": {
+            "get": {
+                "tags": ["Workspaces"],
+                "summary": "Retrieve workspace by slug"
+            },
+            "delete": {
+                "tags": ["Workspaces"],
+                "summary": "Delete workspace by slug"
+            }
+        },
+        "/v1/workspace/{slug}/update": {
+            "post": {
+                "tags": ["Workspaces"],
+                "summary": "Update workspace settings by slug"
+            }
+        },
+        "/v1/workspace/{slug}/chats": {
+            "get": {
+                "tags": ["Workspaces"],
+                "summary": "List chats in a workspace by slug"
+            }
+        },
+        "/v1/workspace/{slug}/update-embeddings": {
+            "post": {
+                "tags": ["Workspaces"],
+                "summary": "Update embeddings for documents in a workspace"
+            }
+        },
+        "/v1/workspace/{slug}/update-pin": {
+            "post": {
+                "tags": ["Workspaces"],
+                "summary": "Pin/unpin a workspace"
+            }
+        },
+        "/v1/workspace/{slug}/chat": {
+            "post": {
+                "tags": ["Workspaces"],
+                "summary": "Send a chat message to a workspace (non-streamed)"
+            }
+        },
+        "/v1/workspace/{slug}/stream-chat": {
+            "post": {
+                "tags": ["Workspaces"],
+                "summary": "Send a chat message to a workspace (streamed response)"
+            }
+        },
+        "/v1/workspace/{slug}/vector-search": {
+            "post": {
+                "tags": ["Workspaces"],
+                "summary": "Perform a vector search within a workspace"
+            }
+        },
+        "/v1/system/env-dump": {
+            "get": {
+                "tags": ["System Settings"],
+                "summary": "Dump current environment variables"
+            }
+        },
+        "/v1/system": {
+            "get": {
+                "tags": ["System Settings"],
+                "summary": "Get system information"
+            }
+        },
+        "/v1/system/vector-count": {
+            "get": {
+                "tags": ["System Settings"],
+                "summary": "Get total vector count in the database"
+            }
+        },
+        "/v1/system/update-env": {
+            "post": {
+                "tags": ["System Settings"],
+                "summary": "Update environment variables"
+            }
+        },
+        "/v1/system/export-chats": {
+            "get": {
+                "tags": ["System Settings"],
+                "summary": "Export all system chats"
+            }
+        },
+        "/v1/system/remove-documents": {
+            "delete": {
+                "tags": ["System Settings"],
+                "summary": "Remove all documents from the system"
+            }
+        },
+        "/v1/workspace/{slug}/thread/new": {
+            "post": {
+                "tags": ["Workspace Threads"],
+                "summary": "Create a new thread in a workspace"
+            }
+        },
+        "/v1/workspace/{slug}/thread/{threadSlug}/update": {
+            "post": {
+                "tags": ["Workspace Threads"],
+                "summary": "Update a thread"
+            }
+        },
+        "/v1/workspace/{slug}/thread/{threadSlug}": {
+            "delete": {
+                "tags": ["Workspace Threads"],
+                "summary": "Delete a thread"
+            }
+        },
+        "/v1/workspace/{slug}/thread/{threadSlug}/chats": {
+            "get": {
+                "tags": ["Workspace Threads"],
+                "summary": "List chats in a specific thread"
+            }
+        },
+        "/v1/workspace/{slug}/thread/{threadSlug}/chat": {
+            "post": {
+                "tags": ["Workspace Threads"],
+                "summary": "Send a chat message to a thread (non-streamed)"
+            }
+        },
+        "/v1/workspace/{slug}/thread/{threadSlug}/stream-chat": {
+            "post": {
+                "tags": ["Workspace Threads"],
+                "summary": "Send a chat message to a thread (streamed response)"
+            }
+        },
+        "/v1/users": {
+            "get": {
+                "tags": ["User Management"],
+                "summary": "List all users (non-admin view)"
+            }
+        },
+        "/v1/openai/models": {
+            "get": {
+                "tags": ["OpenAI Compatible Endpoints"],
+                "summary": "List available OpenAI compatible models"
+            }
+        },
+        "/v1/openai/chat/completions": {
+            "post": {
+                "tags": ["OpenAI Compatible Endpoints"],
+                "summary": "Generate chat completions"
+            }
+        },
+        "/v1/openai/embeddings": {
+            "post": {
+                "tags": ["OpenAI Compatible Endpoints"],
+                "summary": "Generate embeddings"
+            }
+        },
+        "/v1/openai/vector_stores": {
+            "get": {
+                "tags": ["OpenAI Compatible Endpoints"],
+                "summary": "List available vector stores"
+            }
+        },
+        "/v1/embed": {
+            "get": {
+                "tags": ["Embed"],
+                "summary": "List all embeds"
+            }
+        },
+        "/v1/embed/{embedUuid}/chats": {
+            "get": {
+                "tags": ["Embed"],
+                "summary": "List chats for a specific embed UUID"
+            }
+        },
+        "/v1/embed/{embedUuid}/chats/{sessionUuid}": {
+            "get": {
+                "tags": ["Embed"],
+                "summary": "List chats for a specific embed and session UUID"
+            }
+        },
+        "/v1/embed/new": {
+            "post": {
+                "tags": ["Embed"],
+                "summary": "Create a new embed instance"
+            }
+        },
+        "/v1/embed/{embedUuid}": {
+            "post": {
+                "tags": ["Embed"],
+                "summary": "Update an embed instance"
+            },
+            "delete": {
+                "tags": ["Embed"],
+                "summary": "Delete an embed instance"
+            }
+        }
+    }
+}

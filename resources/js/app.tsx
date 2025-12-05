@@ -18,6 +18,14 @@ createInertiaApp({
     setup({ el, App, props }) {
         const root = createRoot(el);
 
+        // Set up CSRF token for fetch requests
+        const token = document.head.querySelector<HTMLMetaElement>(
+            'meta[name="csrf-token"]',
+        );
+        if (token) {
+            window.csrfToken = token.content;
+        }
+
         root.render(
             <StrictMode>
                 <App {...props} />

@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'anythingllm' => [
+        'url' => env('ANYTHINGLLM_URL'),
+        'auth_token' => env('ANYTHINGLLM_AUTH'),
+        'default_workspace' => env('ANYTHINGLLM_DEFAULT_WORKSPACE'),
+        'default_thread' => env('ANYTHINGLLM_DEFAULT_THREAD'),
+    ],
+
 ];
