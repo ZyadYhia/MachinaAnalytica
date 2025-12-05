@@ -1,0 +1,79 @@
+{
+  "info": {
+    "name": "Jan API Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Get Models",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/models",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "models"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "let res = pm.response.json();",
+              "",
+              "if (res.data && res.data.length > 0) {",
+              "    let modelId = res.data[0].id;",
+              "    pm.collectionVariables.set(\"model\", modelId);",
+              "    console.log(\"\u2714 Saved model:\", modelId);",
+              "} else {",
+              "    console.log(\"\u274c No model found in response\");",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Send Prompt",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"model\": \"{{model}}\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"string\"\n    }\n  ],\n  \"stream\": false,\n  \"max_tokens\": 0,\n  \"stop\": [],\n  \"temperature\": 0.8,\n  \"dynatemp_range\": 0,\n  \"dynatemp_exponent\": 1,\n  \"top_k\": 40,\n  \"top_p\": 0.95,\n  \"min_p\": 0.05,\n  \"typical_p\": 1,\n  \"n_predict\": -1,\n  \"n_indent\": 0,\n  \"n_keep\": 0,\n  \"presence_penalty\": 0,\n  \"frequency_penalty\": 0,\n  \"repeat_penalty\": 1.1,\n  \"repeat_last_n\": 64,\n  \"dry_multiplier\": 0,\n  \"dry_base\": 1.75,\n  \"dry_allowed_length\": 2,\n  \"dry_penalty_last_n\": -1,\n  \"dry_sequence_breakers\": [\n    \"\\\\n\",\n    \":\",\n    \"\\\"\",\n    \"*\"\n  ],\n  \"xtc_probability\": 0,\n  \"xtc_threshold\": 0.1,\n  \"mirostat\": 0,\n  \"mirostat_tau\": 5,\n  \"mirostat_eta\": 0.1,\n  \"grammar\": \"string\",\n  \"json_schema\": {},\n  \"seed\": -1,\n  \"ignore_eos\": false,\n  \"logit_bias\": {},\n  \"n_probs\": 0,\n  \"min_keep\": 0,\n  \"t_max_predict_ms\": 0,\n  \"id_slot\": -1,\n  \"cache_prompt\": true,\n  \"return_tokens\": false,\n  \"samplers\": [\n    \"dry\",\n    \"top_k\",\n    \"typ_p\",\n    \"top_p\",\n    \"min_p\",\n    \"xtc\",\n    \"temperature\"\n  ],\n  \"timings_per_token\": false,\n  \"return_progress\": false,\n  \"post_sampling_probs\": false,\n  \"response_fields\": [\n    \"string\"\n  ],\n  \"lora\": [\n    {\n      \"id\": 0,\n      \"scale\": 0\n    }\n  ],\n  \"multimodal_data\": [\n    \"string\"\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat/completions",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "chat",
+            "completions"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "model",
+      "value": ""
+    }
+  ]
+}
