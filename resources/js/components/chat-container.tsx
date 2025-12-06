@@ -8,6 +8,27 @@ export interface Message {
     content: string;
     isUser: boolean;
     timestamp: string;
+    isSystem?: boolean;
+    metadata?: {
+        model?: string;
+        usage?: {
+            completion_tokens?: number;
+            prompt_tokens?: number;
+            total_tokens?: number;
+        };
+        timings?: {
+            cache_n?: number;
+            prompt_n?: number;
+            prompt_ms?: number;
+            prompt_per_token_ms?: number;
+            prompt_per_second?: number;
+            predicted_n?: number;
+            predicted_ms?: number;
+            predicted_per_token_ms?: number;
+            predicted_per_second?: number;
+        };
+        finishReason?: string;
+    };
 }
 
 interface ChatContainerProps {
@@ -75,6 +96,7 @@ export function ChatContainer({
                                 message={message.content}
                                 isUser={message.isUser}
                                 timestamp={message.timestamp}
+                                isSystem={message.isSystem}
                             />
                         ))}
                         {isLoading && (

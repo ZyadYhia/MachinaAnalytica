@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use App\Models\CompressorAirBlower;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Storage;
 
 class CompressorAirBlowerSeeder extends Seeder
 {
@@ -13,51 +12,45 @@ class CompressorAirBlowerSeeder extends Seeder
      */
     public function run(): void
     {
-        $csvFile = Storage::path('235K001.csv');
+        $this->command->info('Generating 5000 compressor air blower records...');
 
-        if (! file_exists($csvFile)) {
-            $this->command->error('CSV file not found at: ' . $csvFile);
-
-            return;
-        }
-
-        $file = fopen($csvFile, 'r');
-
-        // Skip the header row
-        fgetcsv($file);
-
-        $records = [];
+        $totalRecords = 5000;
         $now = now();
+        $oneMonthAgo = $now->copy()->subMonth();
 
-        while (($row = fgetcsv($file)) !== false) {
-            // Skip empty rows
-            if (empty($row[1])) {
-                continue;
-            }
+        // Calculate time increment in seconds to distribute records evenly
+        $timeRangeSeconds = $oneMonthAgo->diffInSeconds($now);
+        $timeIncrementSeconds = $timeRangeSeconds / ($totalRecords - 1);
 
-            $records[] = [
-                'flow' => (float) $row[2],
-                'temperature' => (float) $row[3],
-                'pressure' => (float) $row[4],
-                'vibration' => (float) $row[5],
-                'status' => $row[6],
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
+        // Generate records in chunks for better performance
+        $chunkSize = 500;
+        $chunks = ceil($totalRecords / $chunkSize);
 
-            // Insert in chunks of 100 for better performance
-            if (count($records) >= 100) {
-                CompressorAirBlower::insert($records);
-                $records = [];
-            }
-        }
+        for ($chunk = 0; $chunk < $chunks; $chunk++) {
+            $recordsInChunk = min($chunkSize, $totalRecords - ($chunk * $chunkSize));
 
-        // Insert remaining records
-        if (! empty($records)) {
+            $records = CompressorAirBlower::factory()
+                ->count($recordsInChunk)
+                ->make()
+                ->map(function ($record, $index) use ($oneMonthAgo, $timeIncrementSeconds, $chunk, $chunkSize) {
+                    $globalIndex = ($chunk * $chunkSize) + $index;
+                    $recordTimestamp = $oneMonthAgo->copy()->addSeconds($globalIndex * $timeIncrementSeconds);
+
+                    return [
+                        'flow' => $record->flow,
+                        'temperature' => $record->temperature,
+                        'pressure' => $record->pressure,
+                        'vibration' => $record->vibration,
+                        'status' => $record->status,
+                        'created_at' => $recordTimestamp,
+                        'updated_at' => $recordTimestamp,
+                    ];
+                })
+                ->toArray();
+
             CompressorAirBlower::insert($records);
+            $this->command->info('Inserted ' . (($chunk + 1) * $chunkSize) . ' / ' . $totalRecords . ' records...');
         }
-
-        fclose($file);
 
         $this->command->info('Successfully seeded ' . CompressorAirBlower::count() . ' compressor air blower records.');
     }

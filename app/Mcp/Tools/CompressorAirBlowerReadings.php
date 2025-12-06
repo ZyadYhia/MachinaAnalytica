@@ -57,7 +57,7 @@ class CompressorAirBlowerReadings extends Tool
                 'pressure',
                 'vibration',
                 'status',
-                'created_at'
+                'created_at',
             ])->limit($limit)->get();
 
             if ($readings->isEmpty()) {
@@ -78,7 +78,7 @@ class CompressorAirBlowerReadings extends Tool
 
             // Build compact response
             $output = "Compressor Air Blower Readings\n";
-            $output .= str_repeat('=', 50) . "\n\n";
+            $output .= str_repeat('=', 50)."\n\n";
 
             $output .= "Statistics:\n";
             $output .= "  Total Readings: {$stats['count']}\n";
@@ -91,14 +91,14 @@ class CompressorAirBlowerReadings extends Tool
             $output .= "  Max Vibration: {$stats['max_vibration']}\n\n";
 
             $output .= "Recent Readings:\n";
-            $output .= str_repeat('-', 50) . "\n";
+            $output .= str_repeat('-', 50)."\n";
 
             foreach ($readings as $reading) {
                 $output .= "ID: {$reading->id} | Time: {$reading->created_at->format('Y-m-d H:i:s')}\n";
                 $output .= "  Flow: {$reading->flow} | Temp: {$reading->temperature}°C\n";
                 $output .= "  Pressure: {$reading->pressure} PSI | Vibration: {$reading->vibration}\n";
                 $output .= "  Status: {$reading->status}\n";
-                $output .= str_repeat('-', 50) . "\n";
+                $output .= str_repeat('-', 50)."\n";
             }
 
             return Response::text($output);

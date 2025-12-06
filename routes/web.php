@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AnythingLLMController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\JanController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -16,6 +17,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {
         return Inertia::render('dashboard');
     })->name('dashboard');
+
+    Route::get('integration', function () {
+        return Inertia::render('integration/selector');
+    })->name('integration.selector');
 
     Route::prefix('chat')->name('chat.')->group(function () {
         Route::get('/', [ChatController::class, 'index'])->name('index');
@@ -48,6 +53,35 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Documents
         Route::get('/documents', [AnythingLLMController::class, 'documents'])->name('documents');
     });
+
+    Route::prefix('jan')->name('jan.')->group(function () {
+        Route::get('/', [JanController::class, 'index'])->name('index');
+        Route::get('/check-connection', [JanController::class, 'checkConnection'])->name('check-connection');
+        Route::get('/models', [JanController::class, 'models'])->name('models');
+
+        // Chat with MCP tools integration
+        Route::post('/chat', [JanController::class, 'chat'])
+            ->middleware('jan.mcp')
+            ->name('chat');
+
+        // Chat with conversation history
+        Route::post('/chat/history', [JanController::class, 'chatWithHistory'])
+            ->middleware('jan.mcp')
+            ->name('chat.history');
+        Route::get('/conversation/{conversationId?}', [JanController::class, 'getConversation'])->name('conversation.get');
+        Route::delete('/conversation/{conversationId?}', [JanController::class, 'clearConversation'])->name('conversation.clear');
+
+        // MCP Tools management endpoints
+        Route::prefix('mcp')->name('mcp.')->group(function () {
+            Route::get('/tools', [JanController::class, 'tools'])->name('tools');
+            Route::get('/tools/{toolName}', [JanController::class, 'tool'])->name('tool');
+            Route::post('/cache/clear', [JanController::class, 'clearCache'])->name('cache.clear');
+            Route::get('/status', [JanController::class, 'status'])->name('status');
+        });
+
+        // Health check
+        Route::get('/health', [JanController::class, 'health'])->name('health');
+    });
 });
 
-require __DIR__ . '/settings.php';
+require __DIR__.'/settings.php';

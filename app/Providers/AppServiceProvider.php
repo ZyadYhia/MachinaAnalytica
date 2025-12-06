@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\AnythingLLM\AnythingLLMService;
+use App\Services\Jan\JanService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -21,6 +22,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerAnythingLLM();
+        $this->registerJan();
     }
 
     /**
@@ -32,6 +34,19 @@ class AppServiceProvider extends ServiceProvider
             return new AnythingLLMService(
                 baseUrl: config('services.anythingllm.url'),
                 authToken: config('services.anythingllm.auth_token')
+            );
+        });
+    }
+
+    /**
+     * Register Jan service.
+     */
+    protected function registerJan(): void
+    {
+        $this->app->singleton(JanService::class, function ($app) {
+            return new JanService(
+                baseUrl: config('services.jan.url'),
+                authToken: config('services.jan.auth_token')
             );
         });
     }

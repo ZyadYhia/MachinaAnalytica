@@ -19,15 +19,15 @@ class ChatController extends Controller
     {
         $workspacesResponse = $this->anythingLLM->listWorkspaces();
 
-        Log::info('Chat Index - Workspace Response Status: ' . $workspacesResponse->status());
-        Log::info('Chat Index - Workspace Response Body: ' . $workspacesResponse->body());
+        Log::info('Chat Index - Workspace Response Status: '.$workspacesResponse->status());
+        Log::info('Chat Index - Workspace Response Body: '.$workspacesResponse->body());
 
         $workspaces = $workspacesResponse->successful()
             ? $workspacesResponse->json('workspaces', [])
             : [];
 
-        Log::info('Chat Index - Workspaces Count: ' . count($workspaces));
-        Log::info('Chat Index - Workspaces: ' . json_encode($workspaces));
+        Log::info('Chat Index - Workspaces Count: '.count($workspaces));
+        Log::info('Chat Index - Workspaces: '.json_encode($workspaces));
 
         return Inertia::render('chat/index', [
             'workspaces' => $workspaces,
@@ -45,8 +45,8 @@ class ChatController extends Controller
 
         $workspace = $validated['workspace'] ?? $this->getDefaultWorkspace();
 
-        Log::info('Chat Send - Workspace: ' . $workspace);
-        Log::info('Chat Send - Message: ' . $validated['message']);
+        Log::info('Chat Send - Workspace: '.$workspace);
+        Log::info('Chat Send - Message: '.$validated['message']);
 
         if (! $workspace) {
             return response()->json([
@@ -61,8 +61,8 @@ class ChatController extends Controller
             mode: $validated['mode'] ?? 'chat'
         );
 
-        Log::info('Chat Send - Response Status: ' . $response->status());
-        Log::info('Chat Send - Response Body: ' . $response->body());
+        Log::info('Chat Send - Response Status: '.$response->status());
+        Log::info('Chat Send - Response Body: '.$response->body());
 
         if ($response->failed()) {
             return response()->json([
@@ -76,7 +76,8 @@ class ChatController extends Controller
 
         // Check for error or abort responses from AnythingLLM
         if (isset($data['type']) && $data['type'] === 'abort') {
-            Log::error('Chat Send - AnythingLLM Error: ' . ($data['error'] ?? 'Unknown error'));
+            Log::error('Chat Send - AnythingLLM Error: '.($data['error'] ?? 'Unknown error'));
+
             return response()->json([
                 'error' => 'Configuration error',
                 'message' => $data['error'] ?? 'The AI workspace is not properly configured. Please check AnythingLLM settings.',

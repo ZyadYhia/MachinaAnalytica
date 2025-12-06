@@ -20,7 +20,7 @@ class AnythingLLMService
     {
         return Http::baseUrl($this->baseUrl)
             ->withHeaders([
-                'Authorization' => 'Bearer ' . $this->authToken,
+                'Authorization' => 'Bearer '.$this->authToken,
                 'Accept' => 'application/json',
             ])
             ->timeout(30);
