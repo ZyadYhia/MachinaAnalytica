@@ -154,35 +154,6 @@ class JanController extends Controller
                 ]);
             }
 
-            // Always ensure system message with chart instructions is present and up-to-date
-            $systemMessage = <<<'SYSTEMMSG'
-You have a chart tool. When user asks for charts, output this EXACT format (no text charts):
-
-```json:chart
-{"type":"line","title":"Vibration Levels","data":[{"name":"1","value":1.2},{"name":"2","value":1.8},{"name":"3","value":2.2}],"xKey":"name","yKey":"value"}
-```
-
-Types: line, bar, area, pie. Always include ```json:chart with valid JSON. Use emojis: 📊📈⚠️✅
-SYSTEMMSG;
-
-            // Update or add system message
-            if (empty($conversationHistory)) {
-                // New conversation - add system message
-                $conversationHistory[] = [
-                    'role' => 'system',
-                    'content' => $systemMessage,
-                ];
-            } elseif ($conversationHistory[0]['role'] === 'system') {
-                // Update existing system message to ensure chart instructions are present
-                $conversationHistory[0]['content'] = $systemMessage;
-            } else {
-                // No system message exists - prepend it
-                array_unshift($conversationHistory, [
-                    'role' => 'system',
-                    'content' => $systemMessage,
-                ]);
-            }
-
             // Add new user message
             $conversationHistory[] = [
                 'role' => 'user',
@@ -200,11 +171,6 @@ SYSTEMMSG;
             if ($response->successful()) {
                 $data = $response->json();
                 $assistantMessage = $data['choices'][0]['message']['content'] ?? null;
-
-                // Auto-generate charts from vibration data if present
-                if ($assistantMessage && !str_contains($assistantMessage, '```json:chart')) {
-                    $assistantMessage = $this->injectChartsIntoResponse($assistantMessage, $conversationHistory);
-                }
 
                 // Add assistant's response to conversation history
                 if ($assistantMessage) {
@@ -405,48 +371,6 @@ SYSTEMMSG;
                 'message' => $e->getMessage(),
             ], 500);
         }
-    }
-
-    /**
-     * Inject chart JSON blocks into AI response when vibration data is detected.
-     */
-    private function injectChartsIntoResponse(string $message, array $conversationHistory): string
-    {
-        // Look for vibration data patterns in the message
-        if (preg_match('/vibration/i', $message) && preg_match('/\|\s*\d+\.?\d*\s*\|/i', $message)) {
-            // Extract vibration values from markdown table
-            preg_match_all('/\|\s*(\d+\.?\d*)\s*\|\s*(\d{4}-\d{2}-\d{2}[^|]*)\s*\|[^|]*\|[^|]*\|[^|]*\|[^|]*\|\s*(\d+\.?\d*)\s*\|/i', $message, $matches);
-
-            if (!empty($matches[0]) && count($matches[3]) > 0) {
-                // Build chart data from extracted values
-                $chartData = [];
-                $vibrationValues = $matches[3];
-
-                for ($i = 0; $i < count($vibrationValues); $i++) {
-                    $chartData[] = [
-                        'name' => 'Reading ' . ($i + 1),
-                        'value' => (float) $vibrationValues[$i]
-                    ];
-                }
-
-                if (count($chartData) > 0) {
-                    $chartJson = json_encode([
-                        'type' => 'line',
-                        'title' => 'Vibration Levels',
-                        'data' => $chartData,
-                        'xKey' => 'name',
-                        'yKey' => 'value'
-                    ], JSON_UNESCAPED_SLASHES);
-
-                    // Append chart block to message
-                    $message .= "\n\n```json:chart\n{$chartJson}\n```";
-
-                    \Log::info('Auto-generated chart', ['data_points' => count($chartData)]);
-                }
-            }
-        }
-
-        return $message;
     }
 
     /**

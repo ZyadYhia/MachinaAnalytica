@@ -232,3 +232,235 @@ test('unauthorized users cannot access jan endpoints', function () {
     $this->get('/jan/models')->assertRedirect(route('login'));
     $this->post('/jan/chat')->assertRedirect(route('login'));
 });
+
+test('detects and recovers from tool call loops', function () {
+    // Simulate a sequence where AI calls the same tool twice, then responds properly
+    Http::fake([
+        '*/chat/completions' => Http::sequence()
+            // First call: AI requests to use a tool
+            ->push([
+                'id' => 'chatcmpl-loop1',
+                'object' => 'chat.completion',
+                'created' => time(),
+                'model' => 'llama-3.2-1b',
+                'choices' => [
+                    [
+                        'finish_reason' => 'tool_calls',
+                        'index' => 0,
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => null,
+                            'tool_calls' => [
+                                [
+                                    'id' => 'call_123',
+                                    'type' => 'function',
+                                    'function' => [
+                                        'name' => 'compressor-air-blower-readings',
+                                        'arguments' => json_encode(['limit' => 10, 'status' => 'critical']),
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'usage' => ['completion_tokens' => 5, 'prompt_tokens' => 10, 'total_tokens' => 15],
+            ], 200)
+            // Second call: AI tries to call the SAME tool again (loop detected)
+            ->push([
+                'id' => 'chatcmpl-loop2',
+                'object' => 'chat.completion',
+                'created' => time(),
+                'model' => 'llama-3.2-1b',
+                'choices' => [
+                    [
+                        'finish_reason' => 'tool_calls',
+                        'index' => 0,
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => null,
+                            'tool_calls' => [
+                                [
+                                    'id' => 'call_124',
+                                    'type' => 'function',
+                                    'function' => [
+                                        'name' => 'compressor-air-blower-readings',
+                                        'arguments' => json_encode(['limit' => 10, 'status' => 'critical']),
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'usage' => ['completion_tokens' => 5, 'prompt_tokens' => 10, 'total_tokens' => 15],
+            ], 200)
+            // Third call: After recovery directive, AI provides text response
+            ->push([
+                'id' => 'chatcmpl-recovered',
+                'object' => 'chat.completion',
+                'created' => time(),
+                'model' => 'llama-3.2-1b',
+                'choices' => [
+                    [
+                        'finish_reason' => 'stop',
+                        'index' => 0,
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => 'Based on the tool results, here are the critical readings in a table format.',
+                        ],
+                    ],
+                ],
+                'usage' => ['completion_tokens' => 15, 'prompt_tokens' => 50, 'total_tokens' => 65],
+            ], 200),
+    ]);
+
+    $response = $this->actingAs($this->user)->postJson('/jan/chat', [
+        'model' => 'llama-3.2-1b',
+        'messages' => [
+            ['role' => 'user', 'content' => 'Show me critical compressor readings'],
+        ],
+        'tools' => [
+            [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'compressor-air-blower-readings',
+                    'description' => 'Get compressor readings',
+                    'parameters' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'limit' => ['type' => 'integer'],
+                            'status' => ['type' => 'string'],
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    $response->assertSuccessful();
+    $response->assertJson([
+        'success' => true,
+        'data' => [
+            'choices' => [
+                [
+                    'message' => [
+                        'content' => 'Based on the tool results, here are the critical readings in a table format.',
+                    ],
+                ],
+            ],
+        ],
+    ]);
+});
+
+test('returns error when AI persists in calling tools after recovery', function () {
+    // Simulate a scenario where AI keeps trying to call tools even after recovery directive
+    Http::fake([
+        '*/chat/completions' => Http::sequence()
+            // First call: AI requests to use a tool
+            ->push([
+                'id' => 'chatcmpl-stubborn1',
+                'object' => 'chat.completion',
+                'created' => time(),
+                'model' => 'llama-3.2-1b',
+                'choices' => [
+                    [
+                        'finish_reason' => 'tool_calls',
+                        'index' => 0,
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => null,
+                            'tool_calls' => [
+                                [
+                                    'id' => 'call_999',
+                                    'type' => 'function',
+                                    'function' => [
+                                        'name' => 'compressor-air-blower-readings',
+                                        'arguments' => json_encode(['limit' => 5]),
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'usage' => ['completion_tokens' => 5, 'prompt_tokens' => 10, 'total_tokens' => 15],
+            ], 200)
+            // Second call: Same tool again (loop)
+            ->push([
+                'id' => 'chatcmpl-stubborn2',
+                'object' => 'chat.completion',
+                'created' => time(),
+                'model' => 'llama-3.2-1b',
+                'choices' => [
+                    [
+                        'finish_reason' => 'tool_calls',
+                        'index' => 0,
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => null,
+                            'tool_calls' => [
+                                [
+                                    'id' => 'call_1000',
+                                    'type' => 'function',
+                                    'function' => [
+                                        'name' => 'compressor-air-blower-readings',
+                                        'arguments' => json_encode(['limit' => 5]),
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'usage' => ['completion_tokens' => 5, 'prompt_tokens' => 10, 'total_tokens' => 15],
+            ], 200)
+            // Third call: After recovery directive, AI STILL tries to call tools
+            ->push([
+                'id' => 'chatcmpl-stubborn3',
+                'object' => 'chat.completion',
+                'created' => time(),
+                'model' => 'llama-3.2-1b',
+                'choices' => [
+                    [
+                        'finish_reason' => 'tool_calls',
+                        'index' => 0,
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => null,
+                            'tool_calls' => [
+                                [
+                                    'id' => 'call_1001',
+                                    'type' => 'function',
+                                    'function' => [
+                                        'name' => 'compressor-air-blower-readings',
+                                        'arguments' => json_encode(['limit' => 5]),
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'usage' => ['completion_tokens' => 5, 'prompt_tokens' => 10, 'total_tokens' => 15],
+            ], 200),
+    ]);
+
+    $response = $this->actingAs($this->user)->postJson('/jan/chat', [
+        'model' => 'llama-3.2-1b',
+        'messages' => [
+            ['role' => 'user', 'content' => 'Show me readings'],
+        ],
+        'tools' => [
+            [
+                'type' => 'function',
+                'function' => [
+                    'name' => 'compressor-air-blower-readings',
+                    'description' => 'Get readings',
+                    'parameters' => ['type' => 'object', 'properties' => []],
+                ],
+            ],
+        ],
+    ]);
+
+    $response->assertStatus(500);
+    $response->assertJson([
+        'success' => false,
+        'error' => 'Tool execution loop detected',
+    ]);
+});

@@ -2,12 +2,14 @@
 
 namespace App\Http\Middleware;
 
+use App\Jobs\ProcessJanChatJob;
 use App\Services\McpToolExecutor;
 use App\Services\McpToolService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -18,13 +20,9 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Flow:
  * 1. Intercept incoming request
- * 2. Fetch available MCP tools
- * 3. Inject tools into the request payload
- * 4. Send request to Jan API
- * 5. Check if Jan wants to call any tools
- * 6. Execute tool calls via MCP servers
- * 7. Send tool results back to Jan API
- * 8. Return final response to client
+ * 2. Check if async mode is requested
+ * 3. If async: dispatch ProcessJanChatJob and return 202 Accepted
+ * 4. If sync: Execute synchronously (original flow)
  */
 class JanMcpMiddleware
 {
@@ -52,6 +50,109 @@ class JanMcpMiddleware
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
+    {
+        // Check if async mode is requested
+        $async = $request->input('async', $request->header('X-Async-Processing')) === '1' ||
+            $request->input('async', $request->header('X-Async-Processing')) === 'true' ||
+            $request->input('async', $request->header('X-Async-Processing')) === true;
+
+        if ($async) {
+            return $this->handleAsync($request);
+        }
+
+        // Default to synchronous processing
+        return $this->handleSync($request, $next);
+    }
+
+    /**
+     * Handle async request by dispatching a job
+     */
+    protected function handleAsync(Request $request): Response
+    {
+        try {
+            $user = $request->user();
+            if (! $user) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Authentication required for async processing',
+                ], 401);
+            }
+
+            $payload = $request->all();
+            $isHistoryEndpoint = $request->is('jan/chat/history');
+
+            // Generate unique conversation ID
+            $conversationId = $payload['conversation_id'] ?? 'default';
+            if ($conversationId === 'default') {
+                $conversationId = Str::uuid()->toString();
+            }
+
+            // Prepare job parameters
+            $conversationHistory = [];
+            $systemPrompt = null;
+            $message = '';
+
+            if ($isHistoryEndpoint) {
+                $conversationHistory = session("jan_conversations.{$conversationId}", []);
+                // Use provided system prompt or default to a clear, concise one with strict tool usage rules
+                $systemPrompt = $payload['system_prompt'] ?? 'You are a helpful AI assistant. IMPORTANT RULES: 1) Call each tool ONLY ONCE per conversation. 2) After receiving tool results, IMMEDIATELY analyze and present them - do NOT call tools again. 3) If you already have tool results, answer based on that data. 4) Never repeat tool calls. 5) Always end with a direct text response.';
+                $message = $payload['message'] ?? '';
+
+                if (empty($message)) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Message is required',
+                    ], 422);
+                }
+            } else {
+                $message = $payload['message'] ?? '';
+                if (isset($payload['messages'])) {
+                    $conversationHistory = $payload['messages'];
+                }
+            }
+
+            // Dispatch the job
+            ProcessJanChatJob::dispatch(
+                $user->id,
+                $conversationId,
+                $payload,
+                $conversationHistory,
+                $systemPrompt,
+                $message
+            );
+
+            Log::info('Jan MCP Middleware: Dispatched async job', [
+                'user_id' => $user->id,
+                'conversation_id' => $conversationId,
+            ]);
+
+            // Return 202 Accepted with tracking info
+            return response()->json([
+                'success' => true,
+                'message' => 'Request queued for processing',
+                'conversation_id' => $conversationId,
+                'user_id' => $user->id,
+                'channel' => "private-jan-chat.{$user->id}.{$conversationId}",
+                'async' => true,
+            ], 202);
+        } catch (\Exception $e) {
+            Log::error('Jan MCP Middleware: Async dispatch failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to queue request',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Handle synchronous request (original flow)
+     */
+    protected function handleSync(Request $request, Closure $next): Response
     {
         try {
             // Fetch all available MCP tools
@@ -181,26 +282,86 @@ class JanMcpMiddleware
                 Log::info('Jan MCP Middleware: Executing tool calls', ['count' => count($toolCalls)]);
 
                 // Check if we're repeating the same tool calls (potential infinite loop)
-                $currentToolSignature = json_encode(array_map(function ($call) {
-                    $functionName = $call['function']['name'] ?? 'unknown';
-                    $arguments = $call['function']['arguments'] ?? [];
+                // Create simplified signature focusing on tool names (args may vary slightly)
+                $currentToolNames = array_map(function ($call) {
+                    return $call['function']['name'] ?? 'unknown';
+                }, $toolCalls);
+                sort($currentToolNames);
+                $currentToolSignature = implode(',', $currentToolNames);
 
-                    return ['name' => $functionName, 'args' => $arguments];
+                // Also check exact match with arguments
+                $exactSignature = json_encode(array_map(function ($call) {
+                    return [
+                        'name' => $call['function']['name'] ?? 'unknown',
+                        'args' => $call['function']['arguments'] ?? [],
+                    ];
                 }, $toolCalls));
 
-                if (in_array($currentToolSignature, $previousToolCalls)) {
-                    Log::warning('Jan MCP Middleware: Detected repeated tool calls, breaking loop', [
+                // Detect loop if same tool names appear OR exact same calls
+                if (
+                    in_array($currentToolSignature, array_column($previousToolCalls, 'names')) ||
+                    in_array($exactSignature, array_column($previousToolCalls, 'exact'))
+                ) {
+                    Log::warning('Jan MCP Middleware: Detected repeated tool calls - attempting recovery', [
                         'tool_calls' => $toolCalls,
+                        'iteration' => $iteration,
                     ]);
 
-                    return response()->json([
-                        'success' => true,
-                        'data' => $janResponse,
-                        'warning' => 'Tool execution loop detected. Returning last response.',
-                    ]);
+                    // Add a very strong system message with explicit format to prevent tool calls
+                    $messages[] = [
+                        'role' => 'system',
+                        'content' => '🛑 STOP - CRITICAL DIRECTIVE 🛑\n\nYou are repeating tool calls unnecessarily. The tools have ALREADY been executed and you have received ALL the data you need.\n\n✅ WHAT YOU MUST DO NOW:\n1. Look at the previous "tool" role messages in this conversation\n2. Extract the data/results from those messages\n3. Write a clear, direct answer using ONLY that existing data\n4. DO NOT call any functions or tools\n5. DO NOT request more information\n6. RESPOND WITH TEXT ONLY\n\n❌ YOU ARE FORBIDDEN FROM:\n- Calling ANY tools or functions\n- Using tool_calls in your response\n- Requesting additional data\n\nThe conversation already contains all necessary information. Provide your analysis NOW using plain text based on the tool results above.',
+                    ];
+
+                    // Try one more time with the strong directive
+                    $payload['messages'] = $messages;
+                    // Remove tools to force text-only response
+                    $payload['tools'] = [];
+                    unset($payload['tool_choice']);
+
+                    try {
+                        $recoveryResponse = $this->sendToJanApi($payload);
+
+                        // Check if it's still trying to call tools
+                        $newMessage = $recoveryResponse['choices'][0]['message'] ?? null;
+                        if ($newMessage && isset($newMessage['tool_calls'])) {
+                            // Still trying to call tools, return error
+                            Log::error('Jan MCP Middleware: AI still attempting tool calls after directive', [
+                                'tool_calls' => $newMessage['tool_calls'],
+                            ]);
+
+                            return response()->json([
+                                'success' => false,
+                                'error' => 'Tool execution loop detected',
+                                'message' => 'The AI model is stuck in a tool-calling loop. Please try rephrasing your question or ask for a different analysis.',
+                            ], 500);
+                        }
+
+                        // Success - AI provided a text response
+                        Log::info('Jan MCP Middleware: Recovery successful, AI provided text response');
+
+                        return response()->json([
+                            'success' => true,
+                            'data' => $recoveryResponse,
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::error('Jan MCP Middleware: Recovery attempt failed', [
+                            'error' => $e->getMessage(),
+                        ]);
+
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'Recovery failed',
+                            'message' => 'An error occurred while processing your request. Please try again.',
+                        ], 500);
+                    }
                 }
 
-                $previousToolCalls[] = $currentToolSignature;
+                $previousToolCalls[] = [
+                    'names' => $currentToolSignature,
+                    'exact' => $exactSignature,
+                    'iteration' => $iteration,
+                ];
 
                 try {
                     // Set a timeout for tool execution
@@ -217,7 +378,7 @@ class JanMcpMiddleware
                     return response()->json([
                         'success' => true,
                         'data' => $janResponse,
-                        'warning' => 'Some tools could not be executed: '.$e->getMessage(),
+                        'warning' => 'Some tools could not be executed: ' . $e->getMessage(),
                         'error_details' => [
                             'message' => $e->getMessage(),
                             'failed_tools' => array_map(function ($call) {
@@ -288,7 +449,7 @@ class JanMcpMiddleware
         $payload['temperature'] = $payload['temperature'] ?? config('mcp.jan.temperature', 0.7);
         $payload['stream'] = $payload['stream'] ?? config('mcp.jan.stream', false);
 
-        $url = rtrim($janUrl, '/').'/v1/chat/completions';
+        $url = rtrim($janUrl, '/') . '/v1/chat/completions';
 
         Log::info('Sending request to Jan API', [
             'url' => $url,

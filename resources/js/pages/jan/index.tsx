@@ -1,7 +1,8 @@
 import { ChatContainer, type Message } from '@/components/chat-container';
+import { useJanChat } from '@/hooks/use-jan-chat';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 
 interface Model {
@@ -17,7 +18,14 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
+// Generate unique IDs for messages
+let messageIdCounter = 0;
+const generateMessageId = () => {
+    return `msg-${Date.now()}-${++messageIdCounter}-${Math.random().toString(36).substr(2, 9)}`;
+};
+
 export default function JanIndex() {
+    const { auth } = usePage().props as { auth: { user: { id: number } } };
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [models, setModels] = useState<Model[]>([]);
@@ -26,6 +34,94 @@ export default function JanIndex() {
     const [conversationId, setConversationId] = useState<string>(
         () => `conversation-${Date.now()}`,
     );
+    const [useAsync, setUseAsync] = useState<boolean>(true);
+
+    const { progressStatus, currentIteration, isProcessing } = useJanChat({
+        conversationId,
+        useAsync,
+        onCompleted: (data) => {
+            console.log('=== CHAT COMPLETED EVENT RECEIVED ===');
+            console.log('Full data:', data);
+            console.log('data.response:', data.response);
+
+            // Try to extract the message content from various possible structures
+            let messageContent = 'No response from model';
+            let metadata: any = {};
+
+            // Structure 1: data.response.data.choices[0].message.content (expected)
+            if (data.response?.data?.choices?.[0]?.message?.content) {
+                const janResponse = data.response.data;
+                const choice = janResponse.choices[0];
+                messageContent = choice.message.content;
+                metadata = {
+                    model: janResponse.model,
+                    usage: janResponse.usage,
+                    timings: janResponse.timings,
+                    finishReason: choice.finish_reason,
+                    metrics: data.metrics,
+                };
+            }
+            // Structure 2: data.response.choices[0].message.content (if data is already unwrapped)
+            else if (data.response?.choices?.[0]?.message?.content) {
+                const choice = data.response.choices[0];
+                messageContent = choice.message.content;
+                metadata = {
+                    model: data.response.model,
+                    usage: data.response.usage,
+                    timings: data.response.timings,
+                    finishReason: choice.finish_reason,
+                    metrics: data.metrics,
+                };
+            }
+            // Structure 3: data.response is a string (fallback)
+            else if (typeof data.response === 'string') {
+                messageContent = data.response;
+            }
+            // Structure 4: Check if response.data is a string
+            else if (typeof data.response?.data === 'string') {
+                messageContent = data.response.data;
+            }
+
+            console.log('Extracted message content:', messageContent);
+
+            const aiMessage: Message = {
+                id: generateMessageId(),
+                content: messageContent,
+                isUser: false,
+                timestamp: new Date().toISOString(),
+                metadata,
+            };
+
+            // Prevent duplicate messages - check if message with same timestamp already exists
+            setMessages((prev) => {
+                const isDuplicate = prev.some(
+                    (msg) =>
+                        !msg.isUser &&
+                        msg.content === messageContent &&
+                        Math.abs(
+                            new Date(msg.timestamp).getTime() -
+                                new Date(aiMessage.timestamp).getTime(),
+                        ) < 1000,
+                );
+                if (isDuplicate) {
+                    console.warn('Duplicate message detected, skipping...');
+                    return prev;
+                }
+                return [...prev, aiMessage];
+            });
+            setIsLoading(false);
+        },
+        onError: (error) => {
+            const errorMessage: Message = {
+                id: generateMessageId(),
+                content: `Error: ${error}`,
+                isUser: false,
+                timestamp: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, errorMessage]);
+            setIsLoading(false);
+        },
+    });
 
     useEffect(() => {
         checkConnection();
@@ -62,7 +158,7 @@ export default function JanIndex() {
     const handleSendMessage = async (content: string) => {
         if (!selectedModel) {
             const errorMessage: Message = {
-                id: Date.now().toString(),
+                id: generateMessageId(),
                 content: 'Please select a model first.',
                 isUser: false,
                 timestamp: new Date().toISOString(),
@@ -72,7 +168,7 @@ export default function JanIndex() {
         }
 
         const userMessage: Message = {
-            id: Date.now().toString(),
+            id: generateMessageId(),
             content,
             isUser: true,
             timestamp: new Date().toISOString(),
@@ -89,120 +185,77 @@ export default function JanIndex() {
                 )?.content ||
                 '';
 
-            // Create AbortController with 5 minute timeout for Jan AI responses
-            const abortController = new AbortController();
-            const timeoutId = setTimeout(() => abortController.abort(), 300000);
+            const response = await fetch('/jan/chat/history', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                },
+                body: JSON.stringify({
+                    model: selectedModel,
+                    message: content,
+                    conversation_id: conversationId,
+                    temperature: 0.8,
+                    max_tokens: 2048,
+                    async: useAsync ? '1' : '0',
+                }),
+            });
 
-            try {
-                const response = await fetch('/jan/chat/history', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                    },
-                    body: JSON.stringify({
-                        model: selectedModel,
-                        message: content,
-                        conversation_id: conversationId,
-                        temperature: 0.8,
-                        max_tokens: 2048,
-                    }),
-                    signal: abortController.signal,
-                });
-                clearTimeout(timeoutId);
+            const data = await response.json();
 
-                // Try to parse the response as JSON
-                let data;
-                try {
-                    data = await response.json();
-                } catch (jsonError) {
-                    console.error(
-                        'Failed to parse response as JSON:',
-                        jsonError,
-                    );
-                    throw new Error(
-                        'Invalid response from server. Please try again.',
-                    );
-                }
-
-                if (!response.ok || !data.success) {
-                    throw new Error(
-                        data.message || data.error || 'Failed to send message',
-                    );
-                }
-
-                // Debug: Log the full response
-                console.log('Full response:', data);
-
-                // Extract response from Jan API structure (now wrapped in data.data)
-                const janResponse = data.data;
-                const choice = janResponse?.choices?.[0];
-                const messageContent =
-                    choice?.message?.content || 'No response from model';
-                const reasoningContent = choice?.message?.reasoning_content;
-                const usage = janResponse?.usage;
-                const timings = janResponse?.timings;
-
-                // Debug: Log what we extracted
-                console.log('Message content:', messageContent);
-                console.log('Conversation ID:', janResponse?.conversation_id);
-                console.log('History length:', janResponse?.history_length);
-
-                // Build the AI response with metadata
-                const fullResponse = messageContent;
-
-                // Optionally show reasoning in development
-                if (reasoningContent && import.meta.env.DEV) {
-                    console.log('Reasoning:', reasoningContent);
-                }
-
-                // Log usage and timings for debugging
-                if (usage || timings) {
-                    console.log('Usage:', usage);
-                    console.log('Timings:', timings);
-                }
-
-                const aiMessage: Message = {
-                    id: (Date.now() + 1).toString(),
-                    content: fullResponse,
-                    isUser: false,
-                    timestamp: new Date().toISOString(),
-                    metadata: {
-                        model: janResponse?.model,
-                        usage: usage,
-                        timings: timings,
-                        finishReason: choice?.finish_reason,
-                    },
-                };
-
-                setMessages((prev) => [...prev, aiMessage]);
-            } catch (fetchError) {
-                clearTimeout(timeoutId);
-                throw fetchError;
+            if (!response.ok || !data.success) {
+                throw new Error(
+                    data.message || data.error || 'Failed to send message',
+                );
             }
+
+            // If async mode, response will come via WebSocket
+            if (useAsync && response.status === 202) {
+                console.log('Request queued for async processing:', data);
+                // Loading state will be cleared when chat.completed event arrives
+                return;
+            }
+
+            // Synchronous mode - process response immediately
+            const janResponse = data.data;
+            const choice = janResponse?.choices?.[0];
+            const messageContent =
+                choice?.message?.content || 'No response from model';
+
+            const aiMessage: Message = {
+                id: generateMessageId(),
+                content: messageContent,
+                isUser: false,
+                timestamp: new Date().toISOString(),
+                metadata: {
+                    model: janResponse?.model,
+                    usage: janResponse?.usage,
+                    timings: janResponse?.timings,
+                    finishReason: choice?.finish_reason,
+                },
+            };
+
+            setMessages((prev) => [...prev, aiMessage]);
         } catch (error) {
             console.error('Error sending message:', error);
 
             let errorMsg =
                 'Sorry, I encountered an error. Please try again later.';
             if (error instanceof Error) {
-                if (error.name === 'AbortError') {
-                    errorMsg =
-                        'Request timed out after 5 minutes. The model may be taking too long to respond.';
-                } else {
-                    errorMsg = error.message;
-                }
+                errorMsg = error.message;
             }
 
             const errorMessage: Message = {
-                id: (Date.now() + 1).toString(),
+                id: generateMessageId(),
                 content: errorMsg,
                 isUser: false,
                 timestamp: new Date().toISOString(),
             };
             setMessages((prev) => [...prev, errorMessage]);
         } finally {
-            setIsLoading(false);
+            if (!useAsync) {
+                setIsLoading(false);
+            }
         }
     };
 
@@ -235,6 +288,17 @@ export default function JanIndex() {
                                 </option>
                             ))}
                         </select>
+                        <label className="flex cursor-pointer items-center gap-2">
+                            <input
+                                type="checkbox"
+                                checked={useAsync}
+                                onChange={(e) => setUseAsync(e.target.checked)}
+                                className="size-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                            />
+                            <span className="text-xs text-muted-foreground">
+                                Async Mode
+                            </span>
+                        </label>
                         <span className="text-xs text-muted-foreground">
                             Powered by Jan AI
                         </span>
@@ -277,10 +341,25 @@ export default function JanIndex() {
                         </p>
                     </div>
                 )}
+                {progressStatus && useAsync && (
+                    <div className="rounded-lg border border-blue-500/50 bg-blue-500/10 p-3 text-sm text-blue-700 dark:text-blue-400">
+                        <div className="flex items-center gap-2">
+                            <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                            <span className="font-medium">
+                                {progressStatus}
+                            </span>
+                            {currentIteration > 0 && (
+                                <span className="text-xs opacity-75">
+                                    (Iteration {currentIteration})
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                )}
                 <ChatContainer
                     messages={messages}
                     onSendMessage={handleSendMessage}
-                    isLoading={isLoading}
+                    isLoading={isLoading || isProcessing}
                     disabled={models.length === 0 || isConnected === false}
                 />
             </div>

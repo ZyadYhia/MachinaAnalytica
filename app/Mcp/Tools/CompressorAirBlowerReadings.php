@@ -17,6 +17,12 @@ class CompressorAirBlowerReadings extends Tool
         Retrieve readings from the compressor air blower sensors.
         Returns flow, temperature, pressure, vibration, and status data.
         Supports filtering by status, date range, and limiting results.
+
+        IMPORTANT DATE HANDLING:
+        - For "last 24 hours" or "past day": Use from_date with current date minus 1 day
+        - For "today": Use from_date with today's date at 00:00:00
+        - Always use current year (2025) unless explicitly specified otherwise
+        - Date format: YYYY-MM-DD HH:MM:SS (e.g., 2025-12-06 00:00:00)
     MARKDOWN;
 
     /**
@@ -118,9 +124,9 @@ class CompressorAirBlowerReadings extends Tool
             'status' => $schema->string()
                 ->description('Filter by status (e.g., normal, warning, critical)'),
             'from_date' => $schema->string()
-                ->description('Filter readings from this date (YYYY-MM-DD HH:MM:SS)'),
+                ->description('Filter readings from this date. Format: YYYY-MM-DD HH:MM:SS. Example: 2025-12-05 07:30:00 for last 24 hours from now.'),
             'to_date' => $schema->string()
-                ->description('Filter readings to this date (YYYY-MM-DD HH:MM:SS)'),
+                ->description('Filter readings to this date. Format: YYYY-MM-DD HH:MM:SS. Example: 2025-12-06 07:30:00 for now. Leave empty to get all records from from_date until now.'),
             'order_by' => $schema->string()
                 ->enum(['created_at', 'flow', 'temperature', 'pressure', 'vibration'])
                 ->description('Field to order by (default: created_at)'),

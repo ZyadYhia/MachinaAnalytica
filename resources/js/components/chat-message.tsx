@@ -1,4 +1,3 @@
-import { ChartRenderer } from '@/components/chart-renderer';
 import { Avatar } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import 'highlight.js/styles/github-dark.css';
@@ -21,33 +20,9 @@ export function ChatMessage({
     timestamp,
     isSystem,
 }: ChatMessageProps) {
-    // Extract chart data from message
-    const { processedMessage, charts } = useMemo(() => {
-        const chartRegex = /```json:chart\s*\n([\s\S]*?)\n```/g;
-        const foundCharts: any[] = [];
-        let processed = message;
-
-        let match;
-        while ((match = chartRegex.exec(message)) !== null) {
-            try {
-                console.log('Found chart JSON:', match[1]);
-                const chartData = JSON.parse(match[1]);
-                console.log('Parsed chart data:', chartData);
-                foundCharts.push(chartData);
-                // Remove the chart JSON from the message
-                processed = processed.replace(match[0], '');
-            } catch (e) {
-                console.error('Failed to parse chart data:', e);
-                console.error('Raw chart text:', match[1]);
-            }
-        }
-
-        console.log('Total charts found:', foundCharts.length);
-
-        // Remove any image tags that might cause broken images
-        processed = processed.replace(/!\[.*?\]\(.*?\)/g, '');
-
-        return { processedMessage: processed.trim(), charts: foundCharts };
+    // Process message to remove any image tags that might cause broken images
+    const processedMessage = useMemo(() => {
+        return message.replace(/!\[.*?\]\(.*?\)/g, '').trim();
     }, [message]);
 
     if (isSystem) {
@@ -263,25 +238,6 @@ export function ChatMessage({
                             >
                                 {processedMessage}
                             </ReactMarkdown>
-
-                            {/* Render extracted charts */}
-                            {charts.length > 0 && (
-                                <div className="mt-7 space-y-6">
-                                    {charts.map((chart, index) => {
-                                        console.log(
-                                            'Rendering chart:',
-                                            index,
-                                            chart,
-                                        );
-                                        return (
-                                            <ChartRenderer
-                                                key={index}
-                                                chartData={chart}
-                                            />
-                                        );
-                                    })}
-                                </div>
-                            )}
                         </>
                     )}
                 </div>

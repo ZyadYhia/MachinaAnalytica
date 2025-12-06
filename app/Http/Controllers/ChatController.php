@@ -17,17 +17,22 @@ class ChatController extends Controller
 
     public function index(): Response
     {
-        $workspacesResponse = $this->anythingLLM->listWorkspaces();
+        try {
+            $workspacesResponse = $this->anythingLLM->listWorkspaces();
 
-        Log::info('Chat Index - Workspace Response Status: '.$workspacesResponse->status());
-        Log::info('Chat Index - Workspace Response Body: '.$workspacesResponse->body());
+            Log::info('Chat Index - Workspace Response Status: '.$workspacesResponse->status());
+            Log::info('Chat Index - Workspace Response Body: '.$workspacesResponse->body());
 
-        $workspaces = $workspacesResponse->successful()
-            ? $workspacesResponse->json('workspaces', [])
-            : [];
+            $workspaces = $workspacesResponse->successful()
+                ? $workspacesResponse->json('workspaces', [])
+                : [];
 
-        Log::info('Chat Index - Workspaces Count: '.count($workspaces));
-        Log::info('Chat Index - Workspaces: '.json_encode($workspaces));
+            Log::info('Chat Index - Workspaces Count: '.count($workspaces));
+            Log::info('Chat Index - Workspaces: '.json_encode($workspaces));
+        } catch (\Exception $e) {
+            Log::warning('Chat Index - AnythingLLM connection failed: '.$e->getMessage());
+            $workspaces = [];
+        }
 
         return Inertia::render('chat/index', [
             'workspaces' => $workspaces,
