@@ -10,3 +10,8 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 Broadcast::channel('jan-chat.{userId}.{conversationId}', function ($user, $userId, $conversationId) {
     return (int) $user->id === (int) $userId;
 });
+
+// Unified Chat private channel authorization
+Broadcast::channel('unified-chat.{userId}.{conversationId}', function ($user, $userId, $conversationId) {
+    return (int) $user->id === (int) $userId;
+});
