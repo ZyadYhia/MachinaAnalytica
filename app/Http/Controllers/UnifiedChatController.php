@@ -6,6 +6,7 @@ use App\Jobs\ProcessUnifiedChatJob;
 use App\Models\Conversation;
 use App\Services\LLM\DTOs\ChatRequest;
 use App\Services\LLM\LLMManager;
+use App\Services\McpToolService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -13,7 +14,8 @@ use Illuminate\Support\Str;
 class UnifiedChatController extends Controller
 {
     public function __construct(
-        protected LLMManager $llmManager
+        protected LLMManager $llmManager,
+        protected McpToolService $mcpToolService
     ) {}
 
     /**
@@ -60,12 +62,15 @@ class UnifiedChatController extends Controller
             ])
             ->toArray();
 
-        // Build chat request
+        // Agent handles tools internally, so we don't need to inject them here.
+        $tools = null;
+
         $chatRequest = new ChatRequest(
             message: $validated['message'],
             conversationId: (string) $conversation->id,
             messages: $messages,
             systemPrompt: $validated['system_prompt'] ?? null,
+            tools: $tools,
             options: [
                 'model' => $integration->active_model,
             ]

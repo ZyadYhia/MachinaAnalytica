@@ -24,7 +24,7 @@ test('can send chat message with anythingllm integration', function () {
 
     $user = User::factory()->create();
 
-    $response = $this->actingAs($user)->postJson(route('chat.send'), [
+    $response = $this->actingAs($user)->postJson(route('api.chat.send'), [
         'message' => 'Hello AI',
         'workspace' => 'test-workspace',
         'mode' => 'chat',
@@ -54,7 +54,7 @@ test('chat message uses default workspace when not provided', function () {
 
     $user = User::factory()->create();
 
-    $response = $this->actingAs($user)->postJson(route('chat.send'), [
+    $response = $this->actingAs($user)->postJson(route('api.chat.send'), [
         'message' => 'Hello',
     ]);
 
@@ -74,7 +74,7 @@ test('chat returns error when no workspace is available', function () {
 
     $user = User::factory()->create();
 
-    $response = $this->actingAs($user)->postJson(route('chat.send'), [
+    $response = $this->actingAs($user)->postJson(route('api.chat.send'), [
         'message' => 'Hello',
     ]);
 
@@ -96,7 +96,7 @@ test('chat returns error when anythingllm service fails', function () {
 
     $user = User::factory()->create();
 
-    $response = $this->actingAs($user)->postJson(route('chat.send'), [
+    $response = $this->actingAs($user)->postJson(route('api.chat.send'), [
         'message' => 'Hello',
         'workspace' => 'test-workspace',
     ]);
@@ -108,7 +108,7 @@ test('chat returns error when anythingllm service fails', function () {
 test('chat message validation requires message', function () {
     $user = User::factory()->create();
 
-    $response = $this->actingAs($user)->postJson(route('chat.send'), [
+    $response = $this->actingAs($user)->postJson(route('api.chat.send'), [
         'workspace' => 'test-workspace',
     ]);
 
@@ -119,7 +119,7 @@ test('chat message validation requires message', function () {
 test('chat message validation enforces max length', function () {
     $user = User::factory()->create();
 
-    $response = $this->actingAs($user)->postJson(route('chat.send'), [
+    $response = $this->actingAs($user)->postJson(route('api.chat.send'), [
         'message' => str_repeat('a', 5001),
         'workspace' => 'test-workspace',
     ]);
@@ -139,7 +139,7 @@ test('chat mode validation only allows chat or query', function () {
 
     $user = User::factory()->create();
 
-    $response = $this->actingAs($user)->postJson(route('chat.send'), [
+    $response = $this->actingAs($user)->postJson(route('api.chat.send'), [
         'message' => 'Hello',
         'workspace' => 'test-workspace',
         'mode' => 'invalid-mode',

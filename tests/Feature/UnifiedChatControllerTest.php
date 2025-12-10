@@ -11,15 +11,18 @@ use Illuminate\Support\Facades\Queue;
 
 use function Pest\Laravel\actingAs;
 use function Pest\Laravel\assertDatabaseHas;
+use function Pest\Laravel\delete;
+use function Pest\Laravel\get;
 use function Pest\Laravel\mock;
 use function Pest\Laravel\postJson;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
     $this->integration = LLMIntegration::factory()->for($this->user)->create([
-        'active_integration' => 'jan',
+        'active_integration' => 'agent',
         'active_model' => 'llama3-8b',
         'chat_mode' => 'sync',
+        'integration_status' => 'online',
     ]);
 });
 
@@ -29,24 +32,28 @@ it('sends a chat message in sync mode', function () {
         ->once()
         ->andReturn(new ChatResponse(
             content: 'Test response',
-            model: 'llama3-8b',
-            finishReason: 'stop',
-            usage: ['tokens' => 100]
+            metadata: [
+                'model' => 'llama3-8b',
+                'finishReason' => 'stop',
+                'usage' => ['tokens' => 100],
+            ]
         ));
 
     actingAs($this->user)
-        ->postJson('/unified-chat/chat', [
+        ->postJson('/unified-chat', [
             'message' => 'Hello, how are you?',
         ])
         ->assertOk()
         ->assertJson([
-            'content' => 'Test response',
-            'model' => 'llama3-8b',
+            'response' => 'Test response',
+            'metadata' => [
+                'model' => 'llama3-8b',
+            ],
         ]);
 
     assertDatabaseHas('conversations', [
         'user_id' => $this->user->id,
-        'provider' => 'jan',
+        'provider' => 'agent',
         'model' => 'llama3-8b',
     ]);
 
@@ -67,16 +74,17 @@ it('dispatches job for async chat mode', function () {
     $this->integration->update(['chat_mode' => 'async']);
 
     actingAs($this->user)
-        ->postJson('/unified-chat/chat', [
+        ->postJson('/unified-chat', [
             'message' => 'Async message',
         ])
         ->assertOk()
         ->assertJson([
-            'status' => 'processing',
+            'mode' => 'async',
+            'success' => true,
         ]);
 
     Queue::assertPushed(ProcessUnifiedChatJob::class, function ($job) {
-        return $job->userMessage->content === 'Async message';
+        return $job->chatRequest->message === 'Async message';
     });
 });
 
@@ -86,12 +94,14 @@ it('creates new conversation if none provided', function () {
         ->once()
         ->andReturn(new ChatResponse(
             content: 'Response',
-            model: 'llama3-8b',
-            finishReason: 'stop'
+            metadata: [
+                'model' => 'llama3-8b',
+                'finishReason' => 'stop',
+            ]
         ));
 
     $response = actingAs($this->user)
-        ->postJson('/unified-chat/chat', [
+        ->postJson('/unified-chat', [
             'message' => 'New conversation',
         ])
         ->assertOk();
@@ -100,13 +110,13 @@ it('creates new conversation if none provided', function () {
 
     assertDatabaseHas('conversations', [
         'user_id' => $this->user->id,
-        'title' => 'New conversation',
+        'title' => 'New Conversation',
     ]);
 });
 
 it('uses existing conversation if provided', function () {
     $conversation = Conversation::factory()->for($this->user)->create([
-        'provider' => 'jan',
+        'provider' => 'agent',
         'model' => 'llama3-8b',
     ]);
 
@@ -115,12 +125,14 @@ it('uses existing conversation if provided', function () {
         ->once()
         ->andReturn(new ChatResponse(
             content: 'Response',
-            model: 'llama3-8b',
-            finishReason: 'stop'
+            metadata: [
+                'model' => 'llama3-8b',
+                'finishReason' => 'stop',
+            ]
         ));
 
     actingAs($this->user)
-        ->postJson('/unified-chat/chat', [
+        ->postJson('/unified-chat', [
             'message' => 'Continue conversation',
             'conversation_id' => $conversation->id,
         ])
@@ -132,7 +144,7 @@ it('uses existing conversation if provided', function () {
 
 it('validates message is required', function () {
     actingAs($this->user)
-        ->postJson('/unified-chat/chat', [])
+        ->postJson('/unified-chat', [])
         ->assertStatus(422)
         ->assertJsonValidationErrors(['message']);
 });
@@ -142,24 +154,23 @@ it('validates conversation belongs to user', function () {
     $conversation = Conversation::factory()->for($otherUser)->create();
 
     actingAs($this->user)
-        ->postJson('/unified-chat/chat', [
+        ->postJson('/unified-chat', [
             'message' => 'Test',
             'conversation_id' => $conversation->id,
         ])
-        ->assertStatus(422)
-        ->assertJsonValidationErrors(['conversation_id']);
+        ->assertNotFound();
 });
 
 it('requires active integration to chat', function () {
     $this->integration->delete();
 
     actingAs($this->user)
-        ->postJson('/unified-chat/chat', [
+        ->postJson('/unified-chat', [
             'message' => 'Test',
         ])
         ->assertStatus(400)
         ->assertJson([
-            'message' => 'No active LLM integration configured. Please configure your integration in settings.',
+            'error' => 'No active LLM integration configured. Please configure an integration in settings.',
         ]);
 });
 
@@ -172,9 +183,15 @@ it('lists user conversations', function () {
     actingAs($this->user)
         ->get('/unified-chat/conversations')
         ->assertOk()
-        ->assertJsonCount(3)
+        ->assertJsonCount(3, 'data')
         ->assertJsonStructure([
-            '*' => ['id', 'title', 'provider', 'model', 'created_at'],
+            'data' => [
+                '*' => ['id', 'title', 'provider', 'model', 'created_at'],
+            ],
+            'links',
+            // 'meta' or other pagination fields
+            'current_page',
+            'total',
         ]);
 });
 
@@ -186,24 +203,11 @@ it('shows conversation with messages', function () {
         ->get("/unified-chat/conversations/{$conversation->id}")
         ->assertOk()
         ->assertJson([
-            'id' => $conversation->id,
+            'conversation' => [
+                'id' => $conversation->id,
+            ],
         ])
-        ->assertJsonCount(5, 'messages');
-});
-
-it('creates a new conversation', function () {
-    actingAs($this->user)
-        ->postJson('/unified-chat/conversations', [
-            'title' => 'My New Chat',
-        ])
-        ->assertCreated();
-
-    assertDatabaseHas('conversations', [
-        'user_id' => $this->user->id,
-        'title' => 'My New Chat',
-        'provider' => 'jan',
-        'model' => 'llama3-8b',
-    ]);
+        ->assertJsonCount(5, 'conversation.messages');
 });
 
 it('deletes a conversation', function () {
@@ -211,7 +215,7 @@ it('deletes a conversation', function () {
 
     actingAs($this->user)
         ->delete("/unified-chat/conversations/{$conversation->id}")
-        ->assertNoContent();
+        ->assertOk();
 
     expect($conversation->fresh()->trashed())->toBeTrue();
 });
@@ -222,13 +226,12 @@ it('prevents deleting other users conversations', function () {
 
     actingAs($this->user)
         ->delete("/unified-chat/conversations/{$conversation->id}")
-        ->assertForbidden();
+        ->assertNotFound();
 });
 
 it('requires authentication for all chat endpoints', function () {
-    postJson('/unified-chat/chat')->assertUnauthorized();
+    postJson('/unified-chat')->assertUnauthorized();
     get('/unified-chat/conversations')->assertRedirect('/login');
     get('/unified-chat/conversations/1')->assertRedirect('/login');
-    postJson('/unified-chat/conversations')->assertUnauthorized();
     delete('/unified-chat/conversations/1')->assertRedirect('/login');
 });

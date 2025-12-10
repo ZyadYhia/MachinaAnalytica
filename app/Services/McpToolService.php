@@ -266,4 +266,117 @@ class McpToolService
             throw $exception;
         }
     }
+
+    /**
+     * Execute a specific MCP tool by name.
+     *
+     * @param  string  $toolName  Tool name from MCP discovery
+     * @param  array  $arguments  Tool arguments
+     * @return array Tool execution result
+     */
+    public function executeTool(string $toolName, array $arguments = []): array
+    {
+        Log::info('Executing MCP tool', [
+            'tool' => $toolName,
+            'arguments' => $arguments,
+        ]);
+
+        $servers = config('mcp.servers', []);
+
+        foreach ($servers as $serverKey => $serverConfig) {
+            if (! $this->isServerEnabled($serverConfig)) {
+                continue;
+            }
+
+            try {
+                // For internal servers, execute directly
+                if (($serverConfig['type'] ?? 'external') === 'internal') {
+                    $result = $this->executeInternalTool($serverKey, $serverConfig, $toolName, $arguments);
+                    
+                    if ($result !== null) {
+                        return $result;
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Error executing tool from server', [
+                    'server' => $serverKey,
+                    'tool' => $toolName,
+                    'error' => $e->getMessage(),
+                ]);
+                
+                throw $e;
+            }
+        }
+
+        throw new \Exception("Tool '{$toolName}' not found in any configured MCP server");
+    }
+
+    /**
+     * Execute tool from internal Laravel MCP server.
+     *
+     * @param  string  $serverKey  Server identifier
+     * @param  array  $serverConfig  Server configuration
+     * @param  string  $toolName  Tool name
+     * @param  array  $arguments  Tool arguments
+     * @return array|null Tool result or null if tool not found in this server
+     */
+    protected function executeInternalTool(
+        string $serverKey,
+        array $serverConfig,
+        string $toolName,
+        array $arguments
+    ): ?array {
+        $serverClass = $serverConfig['class'] ?? null;
+
+        if (! $serverClass || ! class_exists($serverClass)) {
+            return null;
+        }
+
+        // Instantiate the server
+        $transport = new \Laravel\Mcp\Server\Transport\StdioTransport('mcp-tool-exec-'.uniqid());
+        $server = new $serverClass($transport);
+
+        // Use reflection to access the protected $tools property
+        $reflection = new \ReflectionClass($server);
+        $toolsProperty = $reflection->getProperty('tools');
+        $toolsProperty->setAccessible(true);
+        $toolClasses = $toolsProperty->getValue($server);
+
+        foreach ($toolClasses as $toolClass) {
+            $toolInstance = app($toolClass);
+            $toolMeta = $toolInstance->meta();
+
+            // Check if this is the tool we're looking for
+            if ($toolMeta['name'] === $toolName) {
+                Log::info('Found tool in server, executing', [
+                    'server' => $serverKey,
+                    'tool' => $toolName,
+                ]);
+
+                // Create a mock request with arguments
+                $request = new \Laravel\Mcp\Request([
+                    'params' => [
+                        'name' => $toolName,
+                        'arguments' => $arguments,
+                    ],
+                ]);
+
+                // Populate request with arguments
+                foreach ($arguments as $key => $value) {
+                    $request->set($key, $value);
+                }
+
+                // Execute the tool
+                $response = $toolInstance->handle($request);
+
+                // Return the response content
+                return [
+                    'content' => $response->content(),
+                    'is_error' => $response->isError ?? false,
+                ];
+            }
+        }
+
+        return null;
+    }
 }

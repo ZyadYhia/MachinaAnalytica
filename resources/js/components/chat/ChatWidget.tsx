@@ -210,7 +210,15 @@ export default function ChatWidget() {
                                 )}
 
                                 <div className="space-y-4">
-                                    {messages.map((message, index) => (
+                                    {messages
+                                        .filter(message => {
+                                            // Hide assistant messages with empty content (tool-calling messages)
+                                            if (message.role === 'assistant' && !message.content?.trim()) {
+                                                return false;
+                                            }
+                                            return true;
+                                        })
+                                        .map((message, index) => (
                                         <div
                                             key={index}
                                             className={`flex ${
@@ -226,7 +234,7 @@ export default function ChatWidget() {
                                                         : 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
                                                 }`}
                                             >
-                                                <p className="text-sm whitespace-pre-wrap">
+                                                <p className="overflow-wrap-anywhere text-sm break-words whitespace-pre-wrap">
                                                     {message.content}
                                                 </p>
                                                 {message.created_at && (
@@ -241,9 +249,36 @@ export default function ChatWidget() {
                                     ))}
 
                                     {isSending && (
-                                        <div className="flex justify-start">
-                                            <div className="rounded-lg bg-gray-100 px-4 py-2 dark:bg-gray-800">
-                                                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                                        <div className="flex justify-center">
+                                            <div className="rounded-lg bg-blue-50 px-4 py-3 dark:bg-blue-900/20">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex gap-1">
+                                                        <span
+                                                            className="h-2 w-2 animate-bounce rounded-full bg-blue-600"
+                                                            style={{
+                                                                animationDelay:
+                                                                    '0ms',
+                                                            }}
+                                                        ></span>
+                                                        <span
+                                                            className="h-2 w-2 animate-bounce rounded-full bg-blue-600"
+                                                            style={{
+                                                                animationDelay:
+                                                                    '150ms',
+                                                            }}
+                                                        ></span>
+                                                        <span
+                                                            className="h-2 w-2 animate-bounce rounded-full bg-blue-600"
+                                                            style={{
+                                                                animationDelay:
+                                                                    '300ms',
+                                                            }}
+                                                        ></span>
+                                                    </div>
+                                                    <span className="text-sm text-blue-700 dark:text-blue-300">
+                                                        AI is analyzing and executing tools...
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
                                     )}

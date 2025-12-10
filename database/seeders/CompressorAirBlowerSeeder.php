@@ -41,7 +41,6 @@ class CompressorAirBlowerSeeder extends Seeder
                         'temperature' => $record->temperature,
                         'pressure' => $record->pressure,
                         'vibration' => $record->vibration,
-                        'status' => $record->status,
                         'created_at' => $recordTimestamp,
                         'updated_at' => $recordTimestamp,
                     ];
@@ -49,9 +48,9 @@ class CompressorAirBlowerSeeder extends Seeder
                 ->toArray();
 
             CompressorAirBlower::insert($records);
-            $this->command->info('Inserted ' . (($chunk + 1) * $chunkSize) . ' / ' . $totalRecords . ' records...');
+            $this->command->info('Inserted '.(($chunk + 1) * $chunkSize).' / '.$totalRecords.' records...');
         }
 
-        $this->command->info('Successfully seeded ' . CompressorAirBlower::count() . ' compressor air blower records.');
+        $this->command->info('Successfully seeded '.CompressorAirBlower::count().' compressor air blower records.');
     }
 }

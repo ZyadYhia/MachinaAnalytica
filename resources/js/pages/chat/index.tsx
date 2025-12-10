@@ -52,12 +52,23 @@ export default function ChatIndex({
                 )?.content ||
                 '';
 
-            const response = await fetch('/chat/send', {
+            const url = '/api/chat/send';
+            console.log('🔵 Sending chat message to:', url);
+            console.log('🔵 Request payload:', {
+                message: content,
+                workspace: selectedWorkspace,
+                mode: 'chat',
+            });
+
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
                 },
+                credentials: 'same-origin',
                 body: JSON.stringify({
                     message: content,
                     workspace: selectedWorkspace,
@@ -65,7 +76,10 @@ export default function ChatIndex({
                 }),
             });
 
+            console.log('🔵 Response status:', response.status);
+            console.log('🔵 Response URL:', response.url);
             const data = await response.json();
+            console.log('🔵 Response data:', data);
 
             // Check if the response contains an error
             if (!response.ok || data.error) {

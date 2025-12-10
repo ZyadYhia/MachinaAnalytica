@@ -4,13 +4,11 @@ namespace App\Services\LLM;
 
 use App\Models\LLMIntegration;
 use App\Models\User;
-use App\Services\AnythingLLM\AnythingLLMService;
-use App\Services\Jan\JanService;
+use App\Services\Agent\AgentService;
 use App\Services\LLM\Contracts\LLMProviderInterface;
 use App\Services\LLM\DTOs\ChatRequest;
 use App\Services\LLM\DTOs\ChatResponse;
-use App\Services\LLM\Providers\AnythingLLMProvider;
-use App\Services\LLM\Providers\JanProvider;
+use App\Services\LLM\Providers\AgentProvider;
 
 class LLMManager
 {
@@ -26,24 +24,14 @@ class LLMManager
      */
     protected function registerProviders(): void
     {
-        // Register Jan provider
-        $this->providers['jan'] = function () {
-            $janService = new JanService(
-                baseUrl: config('services.jan.url'),
-                authToken: config('services.jan.auth_token')
+        // Register Agent provider
+        $this->providers['agent'] = function () {
+            $agentService = new \App\Services\Agent\AgentService(
+                baseUrl: config('services.agent.url', 'http://localhost:3000'),
+                timeout: config('services.agent.timeout', 300)
             );
 
-            return new JanProvider($janService);
-        };
-
-        // Register AnythingLLM provider
-        $this->providers['anythingllm'] = function () {
-            $anythingLLMService = new AnythingLLMService(
-                baseUrl: config('services.anythingllm.url'),
-                authToken: config('services.anythingllm.auth_token')
-            );
-
-            return new AnythingLLMProvider($anythingLLMService);
+            return new \App\Services\LLM\Providers\AgentProvider($agentService);
         };
     }
 
@@ -100,7 +88,7 @@ class LLMManager
     /**
      * Get list of models from a specific provider
      */
-    public function getProviderModels(string $providerName): array
+    public function listModels(string $providerName): array
     {
         try {
             $provider = $this->provider($providerName);

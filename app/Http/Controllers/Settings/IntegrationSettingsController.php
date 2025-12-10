@@ -49,7 +49,7 @@ class IntegrationSettingsController extends Controller
     public function update(Request $request): Response
     {
         $validated = $request->validate([
-            'active_integration' => 'required|string|in:jan,anythingllm,none',
+            'active_integration' => 'required|string|in:agent,none',
             'active_model' => 'nullable|string',
             'chat_mode' => 'required|string|in:sync,async',
             'provider_config' => 'nullable|array',
@@ -82,7 +82,7 @@ class IntegrationSettingsController extends Controller
      */
     public function checkHealth(Request $request, string $provider): JsonResponse
     {
-        if (! in_array($provider, ['jan', 'anythingllm'])) {
+        if (! in_array($provider, ['agent'])) {
             return response()->json([
                 'provider' => $provider,
                 'status' => 'offline',
@@ -134,7 +134,7 @@ class IntegrationSettingsController extends Controller
      */
     public function listModels(Request $request, string $provider): JsonResponse
     {
-        if (! in_array($provider, ['jan', 'anythingllm'])) {
+        if (! in_array($provider, ['agent'])) {
             return response()->json([
                 'provider' => $provider,
                 'models' => [],
@@ -142,7 +142,7 @@ class IntegrationSettingsController extends Controller
             ], 400);
         }
 
-        $models = $this->llmManager->getProviderModels($provider);
+        $models = $this->llmManager->listModels($provider);
 
         return response()->json([
             'provider' => $provider,
@@ -165,7 +165,7 @@ class IntegrationSettingsController extends Controller
             ], 400);
         }
 
-        $models = $this->llmManager->getProviderModels($integration->active_integration);
+        $models = $this->llmManager->listModels($integration->active_integration);
 
         return response()->json([
             'provider' => $integration->active_integration,
