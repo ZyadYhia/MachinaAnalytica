@@ -14,6 +14,8 @@ import {
     X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export default function ChatWidget() {
     const { auth } = usePage<SharedData>().props;
@@ -69,6 +71,54 @@ export default function ChatWidget() {
         }
     };
 
+    const renderErrorContent = (errorMsg: string) => {
+        try {
+            // Check if potential JSON exists
+            const jsonStartIndex = errorMsg.indexOf('{');
+            const jsonEndIndex = errorMsg.lastIndexOf('}');
+
+            if (
+                jsonStartIndex !== -1 &&
+                jsonEndIndex !== -1 &&
+                jsonEndIndex > jsonStartIndex
+            ) {
+                const potentialJson = errorMsg.substring(
+                    jsonStartIndex,
+                    jsonEndIndex + 1,
+                );
+                const jsonContent = JSON.parse(potentialJson);
+
+                if (jsonContent.markdown) {
+                    return (
+                        <div className="prose prose-sm w-full max-w-none overflow-x-auto text-red-800 dark:text-red-200 dark:prose-invert">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {jsonContent.markdown}
+                            </ReactMarkdown>
+                        </div>
+                    );
+                }
+
+                if (jsonContent.message) {
+                    return (
+                        <span>
+                            {jsonContent.message}
+                            {jsonContent.details ? (
+                                <span className="mt-1 block text-xs opacity-80">
+                                    {jsonContent.details}
+                                </span>
+                            ) : null}
+                        </span>
+                    );
+                }
+            }
+        } catch (e) {
+            // Fallback if JSON parsing fails
+            console.debug('Failed to parse error message as JSON', e);
+        }
+
+        return errorMsg;
+    };
+
     if (!auth?.user) {
         return null;
     }
@@ -96,7 +146,7 @@ export default function ChatWidget() {
             {isOpen && (
                 <div
                     className={`fixed right-6 bottom-6 z-50 flex flex-col rounded-lg border border-gray-200 bg-white shadow-2xl transition-all dark:border-gray-700 dark:bg-gray-900 ${
-                        isMinimized ? 'h-14 w-80' : 'h-[600px] w-96'
+                        isMinimized ? 'h-14 w-80' : 'h-[800px] w-[800px]'
                     }`}
                 >
                     {/* Header */}
@@ -191,7 +241,7 @@ export default function ChatWidget() {
                             )}
 
                             {/* Messages Area */}
-                            <ScrollArea className="flex-1 p-4">
+                            <ScrollArea className="flex-1 overflow-y-auto p-4">
                                 {isLoading && (
                                     <div className="flex h-full items-center justify-center">
                                         <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
@@ -211,42 +261,59 @@ export default function ChatWidget() {
 
                                 <div className="space-y-4">
                                     {messages
-                                        .filter(message => {
+                                        .filter((message) => {
                                             // Hide assistant messages with empty content (tool-calling messages)
-                                            if (message.role === 'assistant' && !message.content?.trim()) {
+                                            if (
+                                                message.role === 'assistant' &&
+                                                !message.content?.trim()
+                                            ) {
                                                 return false;
                                             }
                                             return true;
                                         })
                                         .map((message, index) => (
-                                        <div
-                                            key={index}
-                                            className={`flex ${
-                                                message.role === 'user'
-                                                    ? 'justify-end'
-                                                    : 'justify-start'
-                                            }`}
-                                        >
                                             <div
-                                                className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                                                key={index}
+                                                className={`flex ${
                                                     message.role === 'user'
-                                                        ? 'bg-blue-600 text-white'
-                                                        : 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
+                                                        ? 'justify-end'
+                                                        : 'justify-start'
                                                 }`}
                                             >
-                                                <p className="overflow-wrap-anywhere text-sm break-words whitespace-pre-wrap">
-                                                    {message.content}
-                                                </p>
-                                                {message.created_at && (
-                                                    <p className="mt-1 text-xs opacity-70">
-                                                        {new Date(
-                                                            message.created_at,
-                                                        ).toLocaleTimeString()}
-                                                    </p>
-                                                )}
+                                                <div
+                                                    className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                                                        message.role === 'user'
+                                                            ? 'bg-blue-600 text-white'
+                                                            : 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
+                                                    }`}
+                                                >
+                                                    {message.role === 'user' ? (
+                                                        <p className="overflow-wrap-anywhere text-sm break-words whitespace-pre-wrap">
+                                                            {message.content}
+                                                        </p>
+                                                    ) : (
+                                                        <div className="prose prose-sm max-w-none overflow-x-auto break-words dark:prose-invert">
+                                                            <ReactMarkdown
+                                                                remarkPlugins={[
+                                                                    remarkGfm,
+                                                                ]}
+                                                            >
+                                                                {
+                                                                    message.content
+                                                                }
+                                                            </ReactMarkdown>
+                                                        </div>
+                                                    )}
+                                                    {message.created_at && (
+                                                        <p className="mt-1 text-xs opacity-70">
+                                                            {new Date(
+                                                                message.created_at,
+                                                            ).toLocaleTimeString()}
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        ))}
 
                                     {isSending && (
                                         <div className="flex justify-center">
@@ -276,7 +343,8 @@ export default function ChatWidget() {
                                                         ></span>
                                                     </div>
                                                     <span className="text-sm text-blue-700 dark:text-blue-300">
-                                                        AI is analyzing and executing tools...
+                                                        AI is analyzing and
+                                                        executing tools...
                                                     </span>
                                                 </div>
                                             </div>
@@ -290,10 +358,10 @@ export default function ChatWidget() {
                             {/* Error Message */}
                             {error && (
                                 <div className="border-t border-red-200 bg-red-50 px-4 py-2 dark:border-red-800 dark:bg-red-900/20">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <p className="flex-1 text-sm text-red-800 dark:text-red-200">
-                                            {error}
-                                        </p>
+                                    <div className="flex items-start justify-between gap-2 overflow-hidden">
+                                        <div className="min-w-0 flex-1 overflow-x-auto text-sm text-red-800 dark:text-red-200">
+                                            {renderErrorContent(error)}
+                                        </div>
                                         <button
                                             onClick={clearError}
                                             className="text-red-800 hover:text-red-900 dark:text-red-200 dark:hover:text-red-100"

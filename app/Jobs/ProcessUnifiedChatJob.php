@@ -59,10 +59,10 @@ class ProcessUnifiedChatJob implements ShouldQueue
             // Handle tool execution if required
             $maxIterations = 5;
             $iteration = 0;
-            
+
             while ($response->requiresToolExecution && $iteration < $maxIterations) {
                 $iteration++;
-                
+
                 Log::info('Tool execution required', [
                     'iteration' => $iteration,
                     'tool_calls' => count($response->toolCalls ?? []),
@@ -70,7 +70,7 @@ class ProcessUnifiedChatJob implements ShouldQueue
 
                 // Execute tools and get results
                 $toolResults = $this->executeTools($response->toolCalls, $mcpToolService);
-                
+
                 // Store assistant message with tool calls
                 $this->conversation->messages()->create([
                     'role' => 'assistant',
@@ -84,17 +84,17 @@ class ProcessUnifiedChatJob implements ShouldQueue
                 $messages = $this->conversation->messages()
                     ->orderBy('created_at')
                     ->get()
-                    ->map(function($msg) {
+                    ->map(function ($msg) {
                         $message = [
                             'role' => $msg->role,
                             'content' => $msg->content ?? '', // Ensure content is never null
                         ];
-                        
+
                         // Add tool_calls only for assistant messages that have them
-                        if ($msg->role === 'assistant' && !empty($msg->tool_calls)) {
+                        if ($msg->role === 'assistant' && ! empty($msg->tool_calls)) {
                             $message['tool_calls'] = $msg->tool_calls;
                         }
-                        
+
                         return $message;
                     })
                     ->toArray();
@@ -108,14 +108,14 @@ class ProcessUnifiedChatJob implements ShouldQueue
                         'result_keys' => array_keys($toolResult['result'] ?? []),
                         'result' => $toolResult['result'] ?? null,
                     ]);
-                    
+
                     // Determine the content to send
                     $content = '';
                     if (isset($toolResult['result'])) {
                         if (is_array($toolResult['result'])) {
                             if (isset($toolResult['result']['content'])) {
-                                $content = is_string($toolResult['result']['content']) 
-                                    ? $toolResult['result']['content'] 
+                                $content = is_string($toolResult['result']['content'])
+                                    ? $toolResult['result']['content']
                                     : json_encode($toolResult['result']['content']);
                             } else {
                                 // No 'content' key, encode the entire result
@@ -126,7 +126,7 @@ class ProcessUnifiedChatJob implements ShouldQueue
                             $content = (string) $toolResult['result'];
                         }
                     }
-                    
+
                     $messages[] = [
                         'role' => 'tool',
                         'tool_call_id' => $toolResult['tool_call_id'],
@@ -176,6 +176,9 @@ class ProcessUnifiedChatJob implements ShouldQueue
                 'message_id' => $assistantMessage->id,
                 'tool_iterations' => $iteration,
             ]);
+
+            // Dispatch title generation job
+            GenerateConversationTitleJob::dispatch($this->conversation, $this->user);
         } catch (\Exception $e) {
             Log::error('Unified chat job failed', [
                 'job_id' => $this->jobId,

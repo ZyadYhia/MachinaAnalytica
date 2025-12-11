@@ -37,8 +37,23 @@ interface UseChatWidgetReturn {
 }
 
 export function useChatWidget(userId?: number): UseChatWidgetReturn {
-    const [isOpen, setIsOpen] = useState(false);
-    const [isMinimized, setIsMinimized] = useState(false);
+    // Initialize state from localStorage if available
+    const [isOpen, setIsOpen] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('chat_is_open');
+            return saved ? JSON.parse(saved) : false;
+        }
+        return false;
+    });
+
+    const [isMinimized, setIsMinimized] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('chat_is_minimized');
+            return saved ? JSON.parse(saved) : false;
+        }
+        return false;
+    });
+
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [currentConversation, setCurrentConversation] =
         useState<Conversation | null>(null);
@@ -46,6 +61,17 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
     const [isLoading, setIsLoading] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Persist state changes to localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('chat_is_open', JSON.stringify(isOpen));
+            localStorage.setItem(
+                'chat_is_minimized',
+                JSON.stringify(isMinimized),
+            );
+        }
+    }, [isOpen, isMinimized]);
 
     // Define loadConversations callback first
     const loadConversations = useCallback(async () => {
@@ -74,13 +100,25 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
         loadConversations();
     }, [loadConversations]);
 
+    // Restore active conversation on mount
+    useEffect(() => {
+        if (!currentConversation && typeof window !== 'undefined' && userId) {
+            const savedId = localStorage.getItem('chat_active_conversation_id');
+            if (savedId) {
+                const conversationId = parseInt(savedId, 10);
+                if (!isNaN(conversationId)) {
+                    // We need to disable the exhaustive-deps rule here because we only want to run this once on mount
+                    // eslint-disable-next-line @typescript-eslint/no-use-before-define
+                    loadConversation(conversationId);
+                }
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [userId]); // Only depend on userId to ensure we have context
+
     // Set up WebSocket listener for async chat responses
     useEffect(() => {
         if (!userId || !currentConversation?.id) {
-            console.log('WebSocket not set up:', {
-                userId,
-                conversationId: currentConversation?.id,
-            });
             return;
         }
 
@@ -105,7 +143,6 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
                 console.log('Adding assistant message:', assistantMessage);
                 setMessages((prev) => {
                     const newMessages = [...prev, assistantMessage];
-                    console.log('Current messages after assistant message:', newMessages);
                     return newMessages;
                 });
                 setIsSending(false);
@@ -130,6 +167,24 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
         }
 
         // Cleanup: leave the channel when component unmounts or conversation changes
+        // Listen for conversation updates (e.g. title change)
+        channel.listen('.jan.chat.conversation_updated', (event: any) => {
+            console.log('Conversation updated event received:', event);
+
+            if (
+                event.conversation &&
+                currentConversation?.id === event.conversation.id
+            ) {
+                setCurrentConversation((prev) =>
+                    prev
+                        ? { ...prev, ...event.conversation }
+                        : event.conversation,
+                );
+            }
+
+            loadConversations();
+        });
+
         return () => {
             if (channel) {
                 console.log('Leaving WebSocket channel:', channelName);
@@ -160,9 +215,38 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
 
             const data = await response.json();
             setCurrentConversation(data.conversation);
+
+            // Persist active conversation ID
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(
+                    'chat_active_conversation_id',
+                    data.conversation.id.toString(),
+                );
+            }
+
             const loadedMessages = data.conversation.messages || [];
             console.log('Loading conversation messages:', loadedMessages);
             setMessages(loadedMessages);
+
+            // Check for pending response
+            // If the last message is from the user and is recent (< 2 minutes), assume AI is processing
+            if (loadedMessages.length > 0) {
+                const lastMessage = loadedMessages[loadedMessages.length - 1];
+                if (lastMessage.role === 'user' && lastMessage.created_at) {
+                    const messageTime = new Date(
+                        lastMessage.created_at,
+                    ).getTime();
+                    const now = new Date().getTime();
+                    const twoMinutesInMs = 2 * 60 * 1000;
+
+                    if (now - messageTime < twoMinutesInMs) {
+                        console.log(
+                            'Detected pending response based on recent user message',
+                        );
+                        setIsSending(true);
+                    }
+                }
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
             console.error('Error loading conversation:', err);
@@ -187,7 +271,6 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
             console.log('Adding user message:', userMessage);
             setMessages((prev) => {
                 const newMessages = [...prev, userMessage];
-                console.log('Current messages after user message:', newMessages);
                 return newMessages;
             });
 
@@ -226,52 +309,31 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
                 if (data.mode === 'async') {
                     // Async mode - response will come via WebSocket
                     // Update conversation ID if new conversation was created
-                    const conversationId = data.conversation_id || currentConversation?.id;
-                    
+
                     if (data.conversation_id && !currentConversation) {
                         console.log(
                             'Setting new conversation ID:',
                             data.conversation_id,
                         );
-                        setCurrentConversation({
-                            id: data.conversation_id,
-                            title: 'New Conversation',
-                            provider: data.provider || 'unknown',
+                        setCurrentConversation((prev) => {
+                            const newConv = {
+                                id: data.conversation_id,
+                                title: 'New Conversation',
+                                provider: data.provider || 'unknown',
+                            };
+
+                            // Persist new conversation ID
+                            if (typeof window !== 'undefined') {
+                                localStorage.setItem(
+                                    'chat_active_conversation_id',
+                                    newConv.id.toString(),
+                                );
+                            }
+
+                            return newConv;
                         });
                     }
-                    
-                    // Immediately subscribe to WebSocket for this conversation
-                    if (conversationId && userId) {
-                        const channelName = `jan-chat.${userId}.${conversationId}`;
-                        console.log('Subscribing to WebSocket channel immediately:', channelName);
-                        
-                        const channel = (window as any).Echo?.private(channelName);
-                        if (channel) {
-                            channel.listen('.jan.chat.completed', (event: any) => {
-                                console.log('Chat completed event received:', event);
 
-                                const assistantMessage: ChatMessage = {
-                                    role: 'assistant',
-                                    content: event.response?.content || '',
-                                    metadata: event.response?.metadata,
-                                    created_at: event.timestamp,
-                                };
-
-                                setMessages((prev) => [...prev, assistantMessage]);
-                                setIsSending(false);
-                                loadConversations();
-                            });
-
-                            channel.listen('.jan.chat.failed', (event: any) => {
-                                console.error('Chat failed event received:', event);
-                                setError(event.error || 'Chat request failed');
-                                setIsSending(false);
-                                setMessages((prev) => prev.slice(0, -1));
-                            });
-                            
-                            console.log('WebSocket listeners attached immediately');
-                        }
-                    }
                     // Keep isSending true for async - will be set false when WebSocket event arrives
                 } else {
                     // Sync mode - add assistant response immediately
@@ -281,20 +343,31 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
                         metadata: data.metadata,
                         created_at: new Date().toISOString(),
                     };
-                    console.log('Sync mode - adding assistant message:', assistantMessage);
+                    console.log(
+                        'Sync mode - adding assistant message:',
+                        assistantMessage,
+                    );
                     setMessages((prev) => {
                         const newMessages = [...prev, assistantMessage];
-                        console.log('Current messages after sync response:', newMessages);
                         return newMessages;
                     });
 
                     // Update conversation ID if new conversation was created
                     if (data.conversation_id && !currentConversation) {
-                        setCurrentConversation({
+                        const newConv = {
                             id: data.conversation_id,
                             title: 'New Conversation',
                             provider: data.provider || 'unknown',
-                        });
+                        };
+                        setCurrentConversation(newConv);
+
+                        // Persist new conversation ID
+                        if (typeof window !== 'undefined') {
+                            localStorage.setItem(
+                                'chat_active_conversation_id',
+                                newConv.id.toString(),
+                            );
+                        }
                     }
 
                     setIsSending(false);
@@ -317,6 +390,9 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
         setCurrentConversation(null);
         setMessages([]);
         setError(null);
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('chat_active_conversation_id');
+        }
     }, []);
 
     const deleteConversation = useCallback(

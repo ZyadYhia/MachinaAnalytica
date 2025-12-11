@@ -39,6 +39,7 @@ class AgentProvider implements LLMProviderInterface
             // Prepare payload
             $payload = [
                 'messages' => $messages,
+                'conversation_id' => $request->conversationId,
             ];
 
             // Call Agent Service
@@ -54,7 +55,7 @@ class AgentProvider implements LLMProviderInterface
             // as 'markdown' contains the final text to show usage.
             // If it's a tool response, the agent returns 'markdown' with the analysis.
             $content = $response['markdown'] ?? ($response['message'] ?? '');
-            
+
             // Map metadata
             $metadata = [
                 'tool' => $response['tool'] ?? false,
@@ -70,7 +71,7 @@ class AgentProvider implements LLMProviderInterface
                 conversationId: $request->conversationId,
                 toolCalls: null, // Agent handled it
                 metadata: $metadata,
-                requiresToolExecution: false 
+                requiresToolExecution: false
             );
 
         } catch (\Exception $e) {
@@ -92,7 +93,7 @@ class AgentProvider implements LLMProviderInterface
                 'id' => 'agent-default',
                 'name' => 'Agent Default',
                 'object' => 'model',
-            ]
+            ],
         ];
     }
 
