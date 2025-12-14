@@ -75,7 +75,28 @@ class AgentProvider implements LLMProviderInterface
             );
 
         } catch (\Exception $e) {
-            Log::error('AgentProvider: Chat failed', ['error' => $e->getMessage()]);
+            Log::error('AgentProvider: Chat failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            // Try to parse error response from agent
+            // Express-agent returns errors with 'markdown' field for formatted messages
+            $errorMessage = $e->getMessage();
+            if (str_contains($errorMessage, 'Agent API request failed:')) {
+                try {
+                    $jsonStart = strpos($errorMessage, '{');
+                    if ($jsonStart !== false) {
+                        $errorBody = json_decode(substr($errorMessage, $jsonStart), true);
+                        if (isset($errorBody['markdown'])) {
+                            throw new \Exception($errorBody['markdown']);
+                        }
+                    }
+                } catch (\JsonException $jsonError) {
+                    // Fall through to original error
+                }
+            }
+
             throw $e;
         }
     }

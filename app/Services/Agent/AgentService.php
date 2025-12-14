@@ -17,7 +17,7 @@ class AgentService
      */
     public function chat(array $payload): array
     {
-        $url = rtrim($this->baseUrl, '/') . '/chat';
+        $url = rtrim($this->baseUrl, '/').'/chat';
 
         try {
             Log::info('AgentService: Sending request to Agent', [
@@ -34,7 +34,7 @@ class AgentService
                     'body' => $response->body(),
                 ]);
 
-                throw new \Exception('Agent API request failed: ' . $response->body());
+                throw new \Exception('Agent API request failed: '.$response->body());
             }
 
             return $response->json();
@@ -54,12 +54,31 @@ class AgentService
     public function checkHealth(): bool
     {
         try {
-            $url = rtrim($this->baseUrl, '/') . '/health';
+            $url = rtrim($this->baseUrl, '/').'/health';
             $response = Http::timeout(5)->get($url);
 
             return $response->successful();
         } catch (\Exception $e) {
             return false;
+        }
+    }
+
+    /**
+     * Get cache statistics from the Agent
+     */
+    public function getCacheStats(): array
+    {
+        try {
+            $url = rtrim($this->baseUrl, '/').'/cache/stats';
+            $response = Http::timeout(5)->get($url);
+
+            if (! $response->successful()) {
+                return [];
+            }
+
+            return $response->json('cache', []);
+        } catch (\Exception $e) {
+            return [];
         }
     }
 }

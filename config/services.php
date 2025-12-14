@@ -48,4 +48,9 @@ return [
         'default_model' => env('JAN_DEFAULT_MODEL', ''),
     ],
 
+    'agent' => [
+        'url' => env('AGENT_URL', 'http://localhost:3001'),
+        'timeout' => env('AGENT_TIMEOUT', 300),
+    ],
+
 ];
