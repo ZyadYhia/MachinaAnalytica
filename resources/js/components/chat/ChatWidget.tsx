@@ -16,6 +16,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { toast } from 'sonner';
 
 export default function ChatWidget() {
     const { auth } = usePage<SharedData>().props;
@@ -36,7 +37,6 @@ export default function ChatWidget() {
         loadConversation,
         createNewConversation,
         deleteConversation,
-        clearError,
     } = useChatWidget(userId);
 
     const [inputMessage, setInputMessage] = useState('');
@@ -50,6 +50,51 @@ export default function ChatWidget() {
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    // Extract a readable message from potential JSON error strings
+    const getErrorText = (errorMsg: string) => {
+        try {
+            const jsonStartIndex = errorMsg.indexOf('{');
+            const jsonEndIndex = errorMsg.lastIndexOf('}');
+
+            if (
+                jsonStartIndex !== -1 &&
+                jsonEndIndex !== -1 &&
+                jsonEndIndex > jsonStartIndex
+            ) {
+                const potentialJson = errorMsg.substring(
+                    jsonStartIndex,
+                    jsonEndIndex + 1,
+                );
+                const jsonContent = JSON.parse(potentialJson);
+
+                if (jsonContent.message) {
+                    return jsonContent.details
+                        ? `${jsonContent.message} — ${jsonContent.details}`
+                        : String(jsonContent.message);
+                }
+
+                if (jsonContent.markdown) {
+                    // Markdown won't render in toast; show as plain text
+                    return String(jsonContent.markdown)
+                        .replace(/[#*_`>\-]/g, '')
+                        .trim();
+                }
+            }
+        } catch (e) {
+            // Ignore parsing errors and fall back to raw message
+        }
+        return errorMsg;
+    };
+
+    // Show error via Sonner toast when it occurs
+    useEffect(() => {
+        if (!error) return;
+        const description = getErrorText(error);
+        toast.error('Chat Error', {
+            description,
+        });
+    }, [error]);
 
     const handleSend = async () => {
         if (!inputMessage.trim() || isSending) return;
@@ -71,53 +116,7 @@ export default function ChatWidget() {
         }
     };
 
-    const renderErrorContent = (errorMsg: string) => {
-        try {
-            // Check if potential JSON exists
-            const jsonStartIndex = errorMsg.indexOf('{');
-            const jsonEndIndex = errorMsg.lastIndexOf('}');
-
-            if (
-                jsonStartIndex !== -1 &&
-                jsonEndIndex !== -1 &&
-                jsonEndIndex > jsonStartIndex
-            ) {
-                const potentialJson = errorMsg.substring(
-                    jsonStartIndex,
-                    jsonEndIndex + 1,
-                );
-                const jsonContent = JSON.parse(potentialJson);
-
-                if (jsonContent.markdown) {
-                    return (
-                        <div className="prose prose-sm w-full max-w-none overflow-x-auto text-red-800 dark:text-red-200 dark:prose-invert">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {jsonContent.markdown}
-                            </ReactMarkdown>
-                        </div>
-                    );
-                }
-
-                if (jsonContent.message) {
-                    return (
-                        <span>
-                            {jsonContent.message}
-                            {jsonContent.details ? (
-                                <span className="mt-1 block text-xs opacity-80">
-                                    {jsonContent.details}
-                                </span>
-                            ) : null}
-                        </span>
-                    );
-                }
-            }
-        } catch (e) {
-            // Fallback if JSON parsing fails
-            console.debug('Failed to parse error message as JSON', e);
-        }
-
-        return errorMsg;
-    };
+    // Removed inline error renderer; errors are shown via toast only
 
     if (!auth?.user) {
         return null;
@@ -315,7 +314,7 @@ export default function ChatWidget() {
                                             </div>
                                         ))}
 
-                                    {isSending && (
+                                    {isSending && messages.length > 0 && (
                                         <div className="flex justify-center">
                                             <div className="rounded-lg bg-blue-50 px-4 py-3 dark:bg-blue-900/20">
                                                 <div className="flex items-center gap-2">
@@ -355,22 +354,7 @@ export default function ChatWidget() {
                                 </div>
                             </ScrollArea>
 
-                            {/* Error Message */}
-                            {error && (
-                                <div className="border-t border-red-200 bg-red-50 px-4 py-2 dark:border-red-800 dark:bg-red-900/20">
-                                    <div className="flex items-start justify-between gap-2 overflow-hidden">
-                                        <div className="min-w-0 flex-1 overflow-x-auto text-sm text-red-800 dark:text-red-200">
-                                            {renderErrorContent(error)}
-                                        </div>
-                                        <button
-                                            onClick={clearError}
-                                            className="text-red-800 hover:text-red-900 dark:text-red-200 dark:hover:text-red-100"
-                                        >
-                                            <X className="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
+                            {/* Error Message removed: using Sonner toast instead */}
 
                             {/* Input Area */}
                             <div className="border-t border-gray-200 p-4 dark:border-gray-700">

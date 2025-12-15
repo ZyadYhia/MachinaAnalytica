@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\API\ML\CompressorDataController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\UnifiedChatController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -17,8 +18,14 @@ use Illuminate\Support\Facades\Route;
 // ... (Existing External Ingestion Route) ...
 Route::post('/compressor/data', [CompressorDataController::class, 'processNewData'])->name('compressor.ingest');
 
-// Chat API endpoint (authenticated)
-Route::middleware(['auth', 'verified'])->post('/chat/send', [ChatController::class, 'send'])->name('api.chat.send');
+
+// Unified chat routes (provider-agnostic, authenticated with session)
+Route::middleware(['web', 'auth:web'])->prefix('unified-chat')->name('unified-chat.')->group(function () {
+    Route::post('/', [UnifiedChatController::class, 'chat'])->name('send');
+    Route::get('/conversations', [UnifiedChatController::class, 'listConversations'])->name('conversations.list');
+    Route::get('/conversations/{conversationId}', [UnifiedChatController::class, 'getConversation'])->name('conversations.get');
+    Route::delete('/conversations/{conversationId}', [UnifiedChatController::class, 'deleteConversation'])->name('conversations.delete');
+});
 
 // --- NEW ML INTERNAL ROUTES (Protected by Middleware) ---
 

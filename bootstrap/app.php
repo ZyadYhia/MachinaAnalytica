@@ -3,7 +3,6 @@
 use App\Http\Middleware\CheckMlToken;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
-use App\Http\Middleware\JanMcpMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -12,10 +11,10 @@ use Illuminate\Support\Facades\Route;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
-        web: __DIR__.'/../routes/web.php',
-        api: __DIR__.'/../routes/api.php',
-        commands: __DIR__.'/../routes/console.php',
-        channels: __DIR__.'/../routes/channels.php',
+        web: __DIR__ . '/../routes/web.php',
+        api: __DIR__ . '/../routes/api.php',
+        commands: __DIR__ . '/../routes/console.php',
+        channels: __DIR__ . '/../routes/channels.php',
         health: '/up',
         then: function () {
             Route::middleware('web')
@@ -27,9 +26,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->validateCsrfTokens(except: [
             'mcp/*',
-            'jan/chat', // Allow Jan chat endpoint to work without CSRF for API-like usage
-            'test-jan-history', // Test endpoint (REMOVE IN PRODUCTION)
-            'test-jan-conversation/*', // Test endpoint (REMOVE IN PRODUCTION)
+            'api/unified-chat',
+            'api/unified-chat/*',
         ]);
 
         $middleware->web(append: [
@@ -40,7 +38,6 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Register custom middleware aliases
         $middleware->alias([
-            'jan.mcp' => JanMcpMiddleware::class,
             'check.ml.token' => CheckMlToken::class,
         ]);
     })

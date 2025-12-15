@@ -56,7 +56,7 @@ class UnifiedChatController extends Controller
         // Get conversation history as messages
         $messages = $conversation->messages()
             ->get()
-            ->map(fn ($msg) => [
+            ->map(fn($msg) => [
                 'role' => $msg->role,
                 'content' => $msg->content,
                 'tool_calls' => $msg->tool_calls,
@@ -64,14 +64,13 @@ class UnifiedChatController extends Controller
             ->toArray();
 
         // Agent handles tools internally, so we don't need to inject them here.
-        $tools = null;
 
         $chatRequest = new ChatRequest(
             message: $validated['message'],
             conversationId: (string) $conversation->id,
             messages: $messages,
             systemPrompt: $validated['system_prompt'] ?? null,
-            tools: $tools,
+            tools: null,
             options: [
                 'model' => $integration->active_model,
             ]
@@ -122,7 +121,7 @@ class UnifiedChatController extends Controller
             ]);
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Failed to process chat request: '.$e->getMessage(),
+                'error' => 'Failed to process chat request: ' . $e->getMessage(),
                 'conversation_id' => $conversation->id,
             ], 500);
         }
@@ -179,7 +178,7 @@ class UnifiedChatController extends Controller
         $user = $request->user();
 
         $conversations = Conversation::where('user_id', $user->id)
-            ->with(['messages' => fn ($q) => $q->latest()->limit(1)])
+            ->with(['messages' => fn($q) => $q->latest()->limit(1)])
             ->orderBy('last_message_at', 'desc')
             ->paginate(20);
 

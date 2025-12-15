@@ -1,5 +1,6 @@
 import '../css/app.css';
 
+import { Toaster } from '@/components/ui/sonner';
 import { createInertiaApp } from '@inertiajs/react';
 import Echo from 'laravel-echo';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
@@ -52,6 +53,8 @@ createInertiaApp({
 
         root.render(
             <StrictMode>
+                {/* Global toast renderer */}
+                <Toaster richColors position="top-right" />
                 <App {...props} />
             </StrictMode>,
         );

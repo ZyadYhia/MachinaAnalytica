@@ -1,5 +1,87 @@
 # MachinaAnalytica - LLM Integration Summary
 
+# MachinaAnalytica Integration Summary (Consolidated)
+
+This document provides a single, high-level overview of the AI integrations and conversation tooling implemented in the MachinaAnalytica Laravel application. It consolidates the current state across Jan API, Laravel MCP, and AnythingLLM, and links to canonical deep-dive docs.
+
+## Scope
+
+- Jan API integration (local LLM)
+- Laravel MCP tools integration (internal-first, external optional)
+- Conversation continuity approaches (session history and `id_slot`)
+- Jan authentication
+- AnythingLLM integration (workspaces, threads, docs)
+
+## Architecture Overview
+
+Jan and MCP are integrated via middleware and services:
+
+1. Requests enter Jan endpoints
+2. `JanMcpMiddleware` discovers and injects MCP tools
+3. Jan API may call tools → `McpToolService` executes them (internal-first)
+4. Final response returned to the client
+
+See the complete flow in [MCP_INTEGRATION_COMPLETE.md](MCP_INTEGRATION_COMPLETE.md).
+
+## Key Components
+
+- Services: `app/Services/Jan/JanService.php`, `app/Services/McpToolService.php`, `app/Services/AnythingLLM/AnythingLLMService.php`
+- Middleware: `app/Http/Middleware/JanMcpMiddleware.php`
+- Config: `config/mcp.php`, `config/services.php`
+- Routes: `routes/ai.php`, `routes/web.php`
+
+## LLM Integration
+
+- Overview and parameters: [LLM_INTEGRATION.md](LLM_INTEGRATION.md)
+- Authentication setup: [AUTH_SETUP.md](AUTH_SETUP.md)
+
+### Conversation Continuity
+
+- Performance-first: Use `id_slot` with prompt caching → [ID_SLOT_IMPLEMENTATION.md](ID_SLOT_IMPLEMENTATION.md)
+- Reliability-first: Session-based full-history → [SESSION_IMPLEMENTATION_SUMMARY.md](SESSION_IMPLEMENTATION_SUMMARY.md)
+- Deep dive and examples: [CONVERSATION_HISTORY.md](CONVERSATION_HISTORY.md)
+
+## MCP Integration (Internal-First)
+
+- Canonical implementation: [MCP_INTEGRATION_COMPLETE.md](MCP_INTEGRATION_COMPLETE.md)
+- Integration overview and endpoints: [MCP_INTEGRATION.md](MCP_INTEGRATION.md)
+- Internal server configuration and benefits: [INTERNAL_MCP_SETUP.md](INTERNAL_MCP_SETUP.md)
+
+Guiding principle: prefer internal Laravel-hosted MCP servers (fast, reliable, no HTTP). Use external MCP only when necessary.
+
+## AnythingLLM Integration
+
+- Full guide: [ANYTHINGLLM_INTEGRATION.md](ANYTHINGLLM_INTEGRATION.md)
+- When to choose: AnythingLLM is useful for workspace/thread-centric chat and document operations. Jan is ideal for local LLM experimentation with full parameter control.
+
+## Environment Configuration (Quick Reference)
+
+- Jan API
+    - `JAN_API_URL`, `JAN_MODEL`, `JAN_AUTH_TOKEN` (optional), sampling params
+- MCP
+    - Internal servers use `route` + `type: internal`
+    - Cache controls: `MCP_CACHE_ENABLED`, `MCP_CACHE_TTL`
+- AnythingLLM
+    - `ANYTHINGLLM_URL` (include `/api`), `ANYTHINGLLM_AUTH`, defaults
+
+## Choosing a Conversation Strategy
+
+- Use `id_slot` when performance and token efficiency matter and server stability is good
+- Use session full-history when you need guaranteed continuity independent of server-side caching
+
+## Testing & Verification
+
+- Jan conversation tests: see `tests/Feature/JanConversationHistoryTest.php`
+- MCP tool discovery/execution: use artisan and log checks described in [MCP_INTEGRATION_COMPLETE.md](MCP_INTEGRATION_COMPLETE.md)
+- AnythingLLM endpoints and UI flows: see routes and `resources/js/pages/chat/`
+
+## Keep/Reference Notes
+
+- Internal guidelines to retain: `.junie/guidelines.md`
+- Copilot instructions to retain: `.github/copilot-instructions.md`
+
+This summary replaces ad-hoc fix notes and quick-ref duplicates. For implementation details, follow the links above.
+
 ## Overview
 
 MachinaAnalytica now supports **two LLM integrations** that users can choose from:

@@ -26,12 +26,12 @@ class LLMManager
     {
         // Register Agent provider
         $this->providers['agent'] = function () {
-            $agentService = new \App\Services\Agent\AgentService(
+            $agentService = new AgentService(
                 baseUrl: config('services.agent.url', 'http://localhost:3000'),
                 timeout: config('services.agent.timeout', 300)
             );
 
-            return new \App\Services\LLM\Providers\AgentProvider($agentService);
+            return new AgentProvider($agentService);
         };
     }
 

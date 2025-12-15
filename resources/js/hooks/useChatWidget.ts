@@ -1,11 +1,12 @@
+import { chatRoutes, Wayfinder } from '@/lib/wayfinder';
 import { useCallback, useEffect, useState } from 'react';
 
 export interface ChatMessage {
     id?: number;
     role: 'user' | 'assistant' | 'system';
     content: string;
-    tool_calls?: any[];
-    metadata?: Record<string, any>;
+    tool_calls?: Record<string, unknown>[];
+    metadata?: Record<string, unknown>;
     created_at?: string;
 }
 
@@ -76,22 +77,17 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
     // Define loadConversations callback first
     const loadConversations = useCallback(async () => {
         try {
-            const response = await fetch('/unified-chat/conversations', {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to load conversations');
-            }
-
-            const data = await response.json();
+            const data = await Wayfinder.get<{ data: Conversation[] }>(
+                chatRoutes.conversations,
+            );
             setConversations(data.data || []);
         } catch (err) {
             console.error('Error loading conversations:', err);
+            setError(
+                err instanceof Error
+                    ? err.message
+                    : 'Failed to load conversations',
+            );
         }
     }, []);
 
@@ -107,9 +103,13 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
             if (savedId) {
                 const conversationId = parseInt(savedId, 10);
                 if (!isNaN(conversationId)) {
-                    // We need to disable the exhaustive-deps rule here because we only want to run this once on mount
-                    // eslint-disable-next-line @typescript-eslint/no-use-before-define
-                    loadConversation(conversationId);
+                    loadConversation(conversationId).catch(() => {
+                        // If the saved conversation no longer exists, clear it from storage
+                        console.log(
+                            'Saved conversation not found, clearing from storage',
+                        );
+                        localStorage.removeItem('chat_active_conversation_id');
+                    });
                 }
             }
         }
@@ -126,18 +126,36 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
         console.log('Setting up WebSocket listener for:', channelName);
 
         // Subscribe to the private channel
-        const channel = (window as any).Echo?.private(channelName);
+        const channel = (
+            window as unknown as {
+                Echo?: { private: (name: string) => unknown };
+            }
+        ).Echo?.private(channelName) as
+            | {
+                  listen: (
+                      event: string,
+                      callback: (data: unknown) => void,
+                  ) => void;
+              }
+            | undefined;
 
         if (channel) {
             // Listen for chat completion
-            channel.listen('.jan.chat.completed', (event: any) => {
+            channel.listen('.jan.chat.completed', (event: unknown) => {
                 console.log('Chat completed event received:', event);
+                const eventData = event as {
+                    response?: {
+                        content?: string;
+                        metadata?: Record<string, unknown>;
+                    };
+                    timestamp?: string;
+                };
 
                 const assistantMessage: ChatMessage = {
                     role: 'assistant',
-                    content: event.response?.content || '',
-                    metadata: event.response?.metadata,
-                    created_at: event.timestamp,
+                    content: eventData.response?.content || '',
+                    metadata: eventData.response?.metadata,
+                    created_at: eventData.timestamp,
                 };
 
                 console.log('Adding assistant message:', assistantMessage);
@@ -150,9 +168,10 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
             });
 
             // Listen for chat failures
-            channel.listen('.jan.chat.failed', (event: any) => {
+            channel.listen('.jan.chat.failed', (event: unknown) => {
                 console.error('Chat failed event received:', event);
-                setError(event.error || 'Chat request failed');
+                const errorData = event as { error?: string };
+                setError(errorData.error || 'Chat request failed');
                 setIsSending(false);
                 // Remove the optimistic user message on failure
                 setMessages((prev) => prev.slice(0, -1));
@@ -168,27 +187,37 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
 
         // Cleanup: leave the channel when component unmounts or conversation changes
         // Listen for conversation updates (e.g. title change)
-        channel.listen('.jan.chat.conversation_updated', (event: any) => {
-            console.log('Conversation updated event received:', event);
+        if (channel) {
+            channel.listen(
+                '.jan.chat.conversation_updated',
+                (event: unknown) => {
+                    console.log('Conversation updated event received:', event);
+                    const updateData = event as { conversation?: Conversation };
 
-            if (
-                event.conversation &&
-                currentConversation?.id === event.conversation.id
-            ) {
-                setCurrentConversation((prev) =>
-                    prev
-                        ? { ...prev, ...event.conversation }
-                        : event.conversation,
-                );
-            }
+                    if (
+                        updateData.conversation &&
+                        currentConversation?.id === updateData.conversation.id
+                    ) {
+                        setCurrentConversation((prev) =>
+                            prev
+                                ? { ...prev, ...updateData.conversation }
+                                : (updateData.conversation ?? null),
+                        );
+                    }
 
-            loadConversations();
-        });
+                    loadConversations();
+                },
+            );
+        }
 
         return () => {
             if (channel) {
                 console.log('Leaving WebSocket channel:', channelName);
-                (window as any).Echo?.leave(channelName);
+                (
+                    window as unknown as {
+                        Echo?: { leave: (name: string) => void };
+                    }
+                ).Echo?.leave(channelName);
             }
         };
     }, [userId, currentConversation?.id, loadConversations]);
@@ -198,22 +227,9 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
         setError(null);
 
         try {
-            const response = await fetch(
-                `/unified-chat/conversations/${conversationId}`,
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'include',
-                },
+            const data = await Wayfinder.get<{ conversation: Conversation }>(
+                chatRoutes.conversation(conversationId),
             );
-
-            if (!response.ok) {
-                throw new Error('Failed to load conversation');
-            }
-
-            const data = await response.json();
             setCurrentConversation(data.conversation);
 
             // Persist active conversation ID
@@ -248,7 +264,19 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
                 }
             }
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred');
+            // Don't show error for 404 (conversation not found) - this is normal when
+            // restoring a deleted conversation from localStorage
+            const is404 =
+                err instanceof Error &&
+                (err.message.includes('No query results') ||
+                    err.message.includes('404') ||
+                    err.message.includes('not found'));
+
+            if (!is404) {
+                setError(
+                    err instanceof Error ? err.message : 'An error occurred',
+                );
+            }
             console.error('Error loading conversation:', err);
         } finally {
             setIsLoading(false);
@@ -274,114 +302,99 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
                 return newMessages;
             });
 
-            try {
-                // Get CSRF token
-                const csrfToken =
-                    document.querySelector<HTMLMetaElement>(
-                        'meta[name="csrf-token"]',
-                    )?.content || '';
+            await Wayfinder.postJson<{
+                mode?: string;
+                conversation_id?: string;
+                provider?: string;
+                response?: string;
+                metadata?: Record<string, unknown>;
+            }>(
+                chatRoutes.sendMessage,
+                {
+                    message: content,
+                    conversation_id: currentConversation?.id,
+                },
+                {
+                    onSuccess: (data) => {
+                        console.log('Chat response received:', data);
 
-                const response = await fetch('/unified-chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                        'X-Requested-With': 'XMLHttpRequest',
-                        Accept: 'application/json',
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        message: content,
-                        conversation_id: currentConversation?.id,
-                    }),
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(
-                        errorData.error || 'Failed to send message',
-                    );
-                }
-
-                const data = await response.json();
-                console.log('Chat response received:', data);
-
-                if (data.mode === 'async') {
-                    // Async mode - response will come via WebSocket
-                    // Update conversation ID if new conversation was created
-
-                    if (data.conversation_id && !currentConversation) {
-                        console.log(
-                            'Setting new conversation ID:',
-                            data.conversation_id,
-                        );
-                        setCurrentConversation((prev) => {
-                            const newConv = {
-                                id: data.conversation_id,
-                                title: 'New Conversation',
-                                provider: data.provider || 'unknown',
-                            };
-
-                            // Persist new conversation ID
-                            if (typeof window !== 'undefined') {
-                                localStorage.setItem(
-                                    'chat_active_conversation_id',
-                                    newConv.id.toString(),
+                        if (data.mode === 'async') {
+                            // Async mode - response will come via WebSocket
+                            if (data.conversation_id && !currentConversation) {
+                                console.log(
+                                    'Setting new conversation ID:',
+                                    data.conversation_id,
                                 );
+                                setCurrentConversation({
+                                    id: parseInt(data.conversation_id, 10),
+                                    title: 'New Conversation',
+                                    provider: data.provider || 'unknown',
+                                });
+
+                                // Persist new conversation ID
+                                if (typeof window !== 'undefined') {
+                                    localStorage.setItem(
+                                        'chat_active_conversation_id',
+                                        data.conversation_id,
+                                    );
+                                }
+                            }
+                        } else {
+                            // Sync mode - add assistant response immediately
+                            const assistantMessage: ChatMessage = {
+                                role: 'assistant',
+                                content: data.response || '',
+                                metadata: data.metadata,
+                                created_at: new Date().toISOString(),
+                            };
+                            console.log(
+                                'Sync mode - adding assistant message:',
+                                assistantMessage,
+                            );
+                            setMessages((prev) => [...prev, assistantMessage]);
+
+                            if (data.conversation_id && !currentConversation) {
+                                const newConv = {
+                                    id: parseInt(data.conversation_id, 10),
+                                    title: 'New Conversation',
+                                    provider: data.provider || 'unknown',
+                                };
+                                setCurrentConversation(newConv);
+
+                                if (typeof window !== 'undefined') {
+                                    localStorage.setItem(
+                                        'chat_active_conversation_id',
+                                        data.conversation_id,
+                                    );
+                                }
                             }
 
-                            return newConv;
-                        });
-                    }
-
-                    // Keep isSending true for async - will be set false when WebSocket event arrives
-                } else {
-                    // Sync mode - add assistant response immediately
-                    const assistantMessage: ChatMessage = {
-                        role: 'assistant',
-                        content: data.response || '',
-                        metadata: data.metadata,
-                        created_at: new Date().toISOString(),
-                    };
-                    console.log(
-                        'Sync mode - adding assistant message:',
-                        assistantMessage,
-                    );
-                    setMessages((prev) => {
-                        const newMessages = [...prev, assistantMessage];
-                        return newMessages;
-                    });
-
-                    // Update conversation ID if new conversation was created
-                    if (data.conversation_id && !currentConversation) {
-                        const newConv = {
-                            id: data.conversation_id,
-                            title: 'New Conversation',
-                            provider: data.provider || 'unknown',
-                        };
-                        setCurrentConversation(newConv);
-
-                        // Persist new conversation ID
-                        if (typeof window !== 'undefined') {
-                            localStorage.setItem(
-                                'chat_active_conversation_id',
-                                newConv.id.toString(),
-                            );
+                            setIsSending(false);
+                            loadConversations();
                         }
-                    }
-
-                    setIsSending(false);
-                    loadConversations();
-                }
-            } catch (err) {
-                const errorMessage =
-                    err instanceof Error ? err.message : 'An error occurred';
-                setError(errorMessage);
-                setIsSending(false);
-                // Remove optimistic user message on error
-                setMessages((prev) => prev.slice(0, -1));
-                throw err;
-            }
+                    },
+                    onError: (errors: unknown) => {
+                        console.error('Chat error:', errors);
+                        const errorObj = errors as
+                            | { message?: string }
+                            | string
+                            | Record<string, string[]>;
+                        const errorMessage =
+                            typeof errorObj === 'string'
+                                ? errorObj
+                                : (errorObj as { message?: string }).message ||
+                                  Object.values(
+                                      errorObj as Record<string, string[]>,
+                                  )
+                                      .flat()
+                                      .join(', ') ||
+                                  'Failed to send message';
+                        setError(errorMessage);
+                        setIsSending(false);
+                        setMessages((prev) => prev.slice(0, -1));
+                    },
+                },
+            );
         },
         [currentConversation, loadConversations],
     );
@@ -397,53 +410,40 @@ export function useChatWidget(userId?: number): UseChatWidgetReturn {
 
     const deleteConversation = useCallback(
         async (conversationId: number) => {
-            try {
-                const response = await fetch(
-                    `/unified-chat/conversations/${conversationId}`,
-                    {
-                        method: 'DELETE',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'X-CSRF-TOKEN':
-                                document
-                                    .querySelector('meta[name="csrf-token"]')
-                                    ?.getAttribute('content') || '',
-                        },
-                        credentials: 'include',
+            await Wayfinder.delete(
+                chatRoutes.deleteConversation(conversationId),
+                {
+                    preserveScroll: true,
+                    preserveState: true,
+                    onSuccess: () => {
+                        if (currentConversation?.id === conversationId) {
+                            createNewConversation();
+                        }
+                        loadConversations();
                     },
-                );
-
-                if (!response.ok) {
-                    throw new Error('Failed to delete conversation');
-                }
-
-                if (currentConversation?.id === conversationId) {
-                    createNewConversation();
-                }
-
-                await loadConversations();
-            } catch (err) {
-                setError(
-                    err instanceof Error
-                        ? err.message
-                        : 'Failed to delete conversation',
-                );
-                console.error('Error deleting conversation:', err);
-            }
+                    onError: (errors: unknown) => {
+                        const errorMessage =
+                            typeof errors === 'string'
+                                ? errors
+                                : 'Failed to delete conversation';
+                        setError(errorMessage);
+                        console.error('Error deleting conversation:', errors);
+                    },
+                },
+            );
         },
         [currentConversation, createNewConversation, loadConversations],
     );
 
     const toggleOpen = useCallback(() => {
-        setIsOpen((prev) => !prev);
+        setIsOpen((prev: boolean) => !prev);
         if (isMinimized) {
             setIsMinimized(false);
         }
     }, [isMinimized]);
 
     const toggleMinimize = useCallback(() => {
-        setIsMinimized((prev) => !prev);
+        setIsMinimized((prev: boolean) => !prev);
     }, []);
 
     const clearError = useCallback(() => {
