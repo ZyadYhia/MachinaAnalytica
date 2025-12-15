@@ -1,0 +1,393 @@
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useChatWidget } from '@/hooks/useChatWidget';
+import type { SharedData } from '@/types';
+import { usePage } from '@inertiajs/react';
+import {
+    Loader2,
+    MessageCircle,
+    Minus,
+    Plus,
+    Send,
+    Trash2,
+    X,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { toast } from 'sonner';
+
+export default function ChatWidget() {
+    const { auth } = usePage<SharedData>().props;
+    const userId = auth?.user?.id;
+
+    const {
+        isOpen,
+        isMinimized,
+        messages,
+        currentConversation,
+        conversations,
+        isLoading,
+        isSending,
+        error,
+        toggleOpen,
+        toggleMinimize,
+        sendMessage,
+        loadConversation,
+        createNewConversation,
+        deleteConversation,
+    } = useChatWidget(userId);
+
+    const [inputMessage, setInputMessage] = useState('');
+    const [showConversations, setShowConversations] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages]);
+
+    // Extract a readable message from potential JSON error strings
+    const getErrorText = (errorMsg: string) => {
+        try {
+            const jsonStartIndex = errorMsg.indexOf('{');
+            const jsonEndIndex = errorMsg.lastIndexOf('}');
+
+            if (
+                jsonStartIndex !== -1 &&
+                jsonEndIndex !== -1 &&
+                jsonEndIndex > jsonStartIndex
+            ) {
+                const potentialJson = errorMsg.substring(
+                    jsonStartIndex,
+                    jsonEndIndex + 1,
+                );
+                const jsonContent = JSON.parse(potentialJson);
+
+                if (jsonContent.message) {
+                    return jsonContent.details
+                        ? `${jsonContent.message} — ${jsonContent.details}`
+                        : String(jsonContent.message);
+                }
+
+                if (jsonContent.markdown) {
+                    // Markdown won't render in toast; show as plain text
+                    return String(jsonContent.markdown)
+                        .replace(/[#*_`>\-]/g, '')
+                        .trim();
+                }
+            }
+        } catch (e) {
+            // Ignore parsing errors and fall back to raw message
+        }
+        return errorMsg;
+    };
+
+    // Show error via Sonner toast when it occurs
+    useEffect(() => {
+        if (!error) return;
+        const description = getErrorText(error);
+        toast.error('Chat Error', {
+            description,
+        });
+    }, [error]);
+
+    const handleSend = async () => {
+        if (!inputMessage.trim() || isSending) return;
+
+        const message = inputMessage;
+        setInputMessage('');
+
+        try {
+            await sendMessage(message);
+        } catch (err) {
+            console.error('Failed to send message:', err);
+        }
+    };
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+    };
+
+    // Removed inline error renderer; errors are shown via toast only
+
+    if (!auth?.user) {
+        return null;
+    }
+
+    return (
+        <>
+            {/* Chat Bubble */}
+            {!isOpen && (
+                <button
+                    onClick={toggleOpen}
+                    className="fixed right-6 bottom-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition-all hover:scale-110 hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
+                    aria-label="Open chat"
+                >
+                    <MessageCircle className="h-6 w-6" />
+                    {isSending && (
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
+                            <span className="relative inline-flex h-4 w-4 rounded-full bg-blue-500"></span>
+                        </span>
+                    )}
+                </button>
+            )}
+
+            {/* Chat Window */}
+            {isOpen && (
+                <div
+                    className={`fixed right-6 bottom-6 z-50 flex flex-col rounded-lg border border-gray-200 bg-white shadow-2xl transition-all dark:border-gray-700 dark:bg-gray-900 ${
+                        isMinimized ? 'h-14 w-80' : 'h-[800px] w-[800px]'
+                    }`}
+                >
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700">
+                        <div className="flex items-center gap-2">
+                            <MessageCircle className="h-5 w-5 text-blue-600" />
+                            <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                                {currentConversation?.title || 'AI Chat'}
+                            </h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() =>
+                                    setShowConversations(!showConversations)
+                                }
+                                className="rounded p-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                                aria-label="Show conversations"
+                                title="Conversations"
+                            >
+                                <Plus className="h-4 w-4" />
+                            </button>
+                            <button
+                                onClick={toggleMinimize}
+                                className="rounded p-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                                aria-label="Minimize"
+                            >
+                                <Minus className="h-4 w-4" />
+                            </button>
+                            <button
+                                onClick={toggleOpen}
+                                className="rounded p-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                                aria-label="Close"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {!isMinimized && (
+                        <>
+                            {/* Conversations List */}
+                            {showConversations && (
+                                <div className="flex-1 overflow-hidden border-b border-gray-200 dark:border-gray-700">
+                                    <ScrollArea className="h-full p-4">
+                                        <div className="space-y-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full justify-start"
+                                                onClick={() => {
+                                                    createNewConversation();
+                                                    setShowConversations(false);
+                                                }}
+                                            >
+                                                <Plus className="mr-2 h-4 w-4" />
+                                                New Conversation
+                                            </Button>
+                                            {conversations.map((conv) => (
+                                                <div
+                                                    key={conv.id}
+                                                    className="flex cursor-pointer items-center gap-2 rounded p-2 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                                >
+                                                    <button
+                                                        onClick={() => {
+                                                            loadConversation(
+                                                                conv.id,
+                                                            );
+                                                            setShowConversations(
+                                                                false,
+                                                            );
+                                                        }}
+                                                        className="flex-1 truncate text-left text-sm"
+                                                    >
+                                                        {conv.title}
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            deleteConversation(
+                                                                conv.id,
+                                                            );
+                                                        }}
+                                                        className="rounded p-1 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/20"
+                                                    >
+                                                        <Trash2 className="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                </div>
+                            )}
+
+                            {/* Messages Area */}
+                            <ScrollArea className="flex-1 overflow-y-auto p-4">
+                                {isLoading && (
+                                    <div className="flex h-full items-center justify-center">
+                                        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                                    </div>
+                                )}
+
+                                {!isLoading && messages.length === 0 && (
+                                    <div className="flex h-full items-center justify-center text-center">
+                                        <div className="text-gray-500 dark:text-gray-400">
+                                            <MessageCircle className="mx-auto mb-2 h-12 w-12 opacity-50" />
+                                            <p className="text-sm">
+                                                Start a conversation
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="space-y-4">
+                                    {messages
+                                        .filter((message) => {
+                                            // Hide assistant messages with empty content (tool-calling messages)
+                                            if (
+                                                message.role === 'assistant' &&
+                                                !message.content?.trim()
+                                            ) {
+                                                return false;
+                                            }
+                                            return true;
+                                        })
+                                        .map((message, index) => (
+                                            <div
+                                                key={index}
+                                                className={`flex ${
+                                                    message.role === 'user'
+                                                        ? 'justify-end'
+                                                        : 'justify-start'
+                                                }`}
+                                            >
+                                                <div
+                                                    className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                                                        message.role === 'user'
+                                                            ? 'bg-blue-600 text-white'
+                                                            : 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
+                                                    }`}
+                                                >
+                                                    {message.role === 'user' ? (
+                                                        <p className="overflow-wrap-anywhere text-sm break-words whitespace-pre-wrap">
+                                                            {message.content}
+                                                        </p>
+                                                    ) : (
+                                                        <div className="prose prose-sm max-w-none overflow-x-auto break-words dark:prose-invert">
+                                                            <ReactMarkdown
+                                                                remarkPlugins={[
+                                                                    remarkGfm,
+                                                                ]}
+                                                            >
+                                                                {
+                                                                    message.content
+                                                                }
+                                                            </ReactMarkdown>
+                                                        </div>
+                                                    )}
+                                                    {message.created_at && (
+                                                        <p className="mt-1 text-xs opacity-70">
+                                                            {new Date(
+                                                                message.created_at,
+                                                            ).toLocaleTimeString()}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                    {isSending && messages.length > 0 && (
+                                        <div className="flex justify-center">
+                                            <div className="rounded-lg bg-blue-50 px-4 py-3 dark:bg-blue-900/20">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex gap-1">
+                                                        <span
+                                                            className="h-2 w-2 animate-bounce rounded-full bg-blue-600"
+                                                            style={{
+                                                                animationDelay:
+                                                                    '0ms',
+                                                            }}
+                                                        ></span>
+                                                        <span
+                                                            className="h-2 w-2 animate-bounce rounded-full bg-blue-600"
+                                                            style={{
+                                                                animationDelay:
+                                                                    '150ms',
+                                                            }}
+                                                        ></span>
+                                                        <span
+                                                            className="h-2 w-2 animate-bounce rounded-full bg-blue-600"
+                                                            style={{
+                                                                animationDelay:
+                                                                    '300ms',
+                                                            }}
+                                                        ></span>
+                                                    </div>
+                                                    <span className="text-sm text-blue-700 dark:text-blue-300">
+                                                        AI is analyzing and
+                                                        executing tools...
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div ref={messagesEndRef} />
+                                </div>
+                            </ScrollArea>
+
+                            {/* Error Message removed: using Sonner toast instead */}
+
+                            {/* Input Area */}
+                            <div className="border-t border-gray-200 p-4 dark:border-gray-700">
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        value={inputMessage}
+                                        onChange={(e) =>
+                                            setInputMessage(e.target.value)
+                                        }
+                                        onKeyPress={handleKeyPress}
+                                        placeholder="Type a message..."
+                                        disabled={isSending}
+                                        className="flex-1"
+                                    />
+                                    <Button
+                                        onClick={handleSend}
+                                        disabled={
+                                            !inputMessage.trim() || isSending
+                                        }
+                                        size="icon"
+                                    >
+                                        {isSending ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Send className="h-4 w-4" />
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+        </>
+    );
+}

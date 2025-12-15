@@ -17,7 +17,7 @@ return new class extends Migration
             $table->float('temperature', 8);
             $table->float('pressure', 8);
             $table->float('vibration', 8);
-            $table->string('status');
+            $table->string('status')->nullable();
             $table->timestamps();
         });
     }

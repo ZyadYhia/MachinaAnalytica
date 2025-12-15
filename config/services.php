@@ -42,4 +42,15 @@ return [
         'default_thread' => env('ANYTHINGLLM_DEFAULT_THREAD'),
     ],
 
+    'jan' => [
+        'url' => env('JAN_URL', 'http://localhost:1337'),
+        'auth_token' => env('JAN_AUTH_TOKEN'),
+        'default_model' => env('JAN_DEFAULT_MODEL', ''),
+    ],
+
+    'agent' => [
+        'url' => env('AGENT_URL', 'http://localhost:3001'),
+        'timeout' => env('AGENT_TIMEOUT', 300),
+    ],
+
 ];

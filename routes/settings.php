@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\IntegrationSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
@@ -25,4 +26,15 @@ Route::middleware('auth')->group(function () {
 
     Route::get('settings/two-factor', [TwoFactorAuthenticationController::class, 'show'])
         ->name('two-factor.show');
+
+    // Integration settings
+    Route::prefix('settings/integrations')->name('settings.integrations.')->group(function () {
+        Route::get('/', [IntegrationSettingsController::class, 'index'])->name('index');
+        Route::get('/show', [IntegrationSettingsController::class, 'show'])->name('show');
+        Route::patch('/', [IntegrationSettingsController::class, 'update'])->name('update');
+        Route::get('/health', [IntegrationSettingsController::class, 'checkUserHealth'])->name('health');
+        Route::get('/health/{provider}', [IntegrationSettingsController::class, 'checkHealth'])->name('health.provider');
+        Route::get('/models', [IntegrationSettingsController::class, 'listUserModels'])->name('models');
+        Route::get('/models/{provider}', [IntegrationSettingsController::class, 'listModels'])->name('models.provider');
+    });
 });

@@ -26,3 +26,5 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+machina-analytica.test.cert
+machina-analytica.test.key

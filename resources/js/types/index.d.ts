@@ -1,5 +1,7 @@
 import { InertiaLinkProps } from '@inertiajs/react';
+import type Echo from 'laravel-echo';
 import { LucideIcon } from 'lucide-react';
+import type Pusher from 'pusher-js';
 
 export interface Auth {
     user: User;
@@ -45,5 +47,7 @@ export interface User {
 declare global {
     interface Window {
         csrfToken?: string;
+        Echo: Echo;
+        Pusher: typeof Pusher;
     }
 }

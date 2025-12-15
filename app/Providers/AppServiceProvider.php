@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Services\AnythingLLM\AnythingLLMService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -12,7 +11,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+
+        if ($this->app->environment('local') && class_exists(\Laravel\Telescope\TelescopeServiceProvider::class)) {
+            $this->app->register(\Laravel\Telescope\TelescopeServiceProvider::class);
+            $this->app->register(TelescopeServiceProvider::class);
+        }
     }
 
     /**
@@ -20,19 +23,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->registerAnythingLLM();
-    }
-
-    /**
-     * Register AnythingLLM service.
-     */
-    protected function registerAnythingLLM(): void
-    {
-        $this->app->singleton(AnythingLLMService::class, function ($app) {
-            return new AnythingLLMService(
-                baseUrl: config('services.anythingllm.url'),
-                authToken: config('services.anythingllm.auth_token')
-            );
-        });
+        //
     }
 }
