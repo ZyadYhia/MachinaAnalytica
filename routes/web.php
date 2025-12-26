@@ -8,7 +8,9 @@ use Laravel\Fortify\Features;
 Route::get('/', function () {
     return redirect()->route('login');
 })->name('home');
-
+Route::get('konva', function () {
+    return Inertia::render('konva/index');
+})->name('konva.demo');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {
         return Inertia::render('dashboard');
